@@ -41,29 +41,6 @@
   pointer-events: none;
 }
 
-/* Two-column hero layout */
-.heroInner {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 60px;
-  width: 100%;
-  max-width: 1280px;
-}
-
-.heroText {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-.heroVisual {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  animation-fill-mode: both;
-}
-
 .eyebrow {
   display: flex;
   align-items: center;
@@ -107,11 +84,11 @@
   display: block;
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: clamp(44px, 6.5vw, 96px);
-  line-height: 0.95;
+  font-size: clamp(38px, 8vw, 96px);
+  line-height: 0.97;
   letter-spacing: -0.035em;
   color: var(--white);
-  white-space: nowrap;
+  white-space: normal;
   animation-fill-mode: both;
 }
 
@@ -873,26 +850,28 @@
 }
 
 /* ── RESPONSIVE ─────────────────────────────────────────────────── */
-@media (max-width: 900px) {
-  .heroInner {
-    grid-template-columns: 1fr;
-    gap: 40px;
-  }
-
-  .heroVisual {
-    justify-content: center;
-  }
-}
-
 @media (max-width: 768px) {
   .hero {
     padding: 90px 24px 60px;
+    justify-content: flex-end;
   }
 
   .heroDivider { left: 24px; right: 24px; }
 
-  .headLine1, .headLine2, .headLine3 {
-    white-space: normal;
+  .eyebrow { margin-bottom: 28px; }
+
+  .heroHeadline { margin-bottom: 24px; }
+
+  .heroBrief {
+    font-size: 15px;
+    margin-bottom: 32px;
+  }
+
+  .heroCta { gap: 10px; }
+
+  .ctaBtn, .ctaBtnSecondary {
+    font-size: 14px;
+    padding: 12px 18px;
   }
 
   .step {

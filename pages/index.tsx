@@ -199,51 +199,41 @@ export default function Home() {
         <div className={s.glowLeft} aria-hidden />
         <div className={s.glowRight} aria-hidden />
 
-        <div className={s.heroInner}>
-          {/* Left column — text */}
-          <div className={s.heroText}>
-            <p className={`${s.eyebrow} animate-up`}>
-              <span className={s.eyebrowDot} />
-              Multi-platform live streaming
-            </p>
+        <p className={`${s.eyebrow} animate-up`}>
+          <span className={s.eyebrowDot} />
+          Multi-platform live streaming
+        </p>
 
-            <h1 className={s.heroHeadline}>
-              <span className={`${s.headLine1} animate-up animate-up-d1`}>Your audience</span>
-              <span className={`${s.headLine2} animate-up animate-up-d2`}>is everywhere.</span>
-              <span className={`${s.headLine3} animate-up animate-up-d3`}>
-                So are <em className={s.youEm}>you.</em>
-              </span>
-            </h1>
+        <h1 className={s.heroHeadline}>
+          <span className={`${s.headLine1} animate-up animate-up-d1`}>Your audience</span>
+          <span className={`${s.headLine2} animate-up animate-up-d2`}>is everywhere.</span>
+          <span className={`${s.headLine3} animate-up animate-up-d3`}>
+            So are <em className={s.youEm}>you.</em>
+          </span>
+        </h1>
 
-            <p className={`${s.heroBrief} animate-up animate-up-d4`}>
-              Go live on TikTok, Instagram, Facebook, YouTube, and Twitch simultaneously.
-              One comment feed. Every gift. Zero tab-switching.
-            </p>
+        <p className={`${s.heroBrief} animate-up animate-up-d4`}>
+          Go live on TikTok, Instagram, Facebook, YouTube, and Twitch simultaneously.
+          One comment feed. Every gift. Zero tab-switching.
+        </p>
 
-            <div className={`${s.heroCta} animate-up animate-up-d5`}>
-              <a href="#" className={s.ctaBtn}>
-                <svg width="16" height="16" viewBox="0 0 15 18" fill="none" aria-hidden>
-                  <path d="M12.573 9.538c-.02-2.107 1.715-3.12 1.794-3.172-0.978-1.43-2.496-1.627-3.038-1.648-1.295-.132-2.528.766-3.183.766-.663 0-1.68-.748-2.763-.727-1.415.021-2.722.826-3.45 2.1-1.473 2.558-.377 6.346 1.057 8.42.7 1.016 1.536 2.152 2.635 2.11 1.06-.044 1.46-.682 2.743-.682 1.276 0 1.643.682 2.764.658 1.14-.02 1.86-.999 2.553-2.02.808-1.156 1.14-2.277 1.158-2.337-.025-.011-2.246-.862-2.27-3.468z" fill="white"/>
-                  <path d="M10.44 3.26C11.008 2.577 11.393 1.639 11.284.68c-.81.034-1.794.54-2.382 1.222-.52.605-.977 1.574-.854 2.502.9.07 1.818-.457 2.393-1.144z" fill="white"/>
-                </svg>
-                App Store
-              </a>
-              <a href="#" className={s.ctaBtnSecondary}>
-                <svg width="17" height="17" viewBox="0 0 512 512" aria-hidden>
-                  <path d="M325.3 234.3L104.6 13l280.8 161.2-60.1 60.1z" fill="#EA4335"/>
-                  <path d="M19.3 0C13.5 2.6 9.3 8.3 9.3 16v480c0 7.7 4.2 13.4 10 16l242-242-242-270z" fill="#4285F4"/>
-                  <path d="M386.1 338.8L299.8 256l86.3-82.8 108.8 62.6c31 17.9 31 47 0 64.9l-108.8 38.1z" fill="#FBBC04"/>
-                  <path d="M104.6 499l220.7-220.7 60.1 60.1L104.6 499z" fill="#34A853"/>
-                </svg>
-                Google Play
-              </a>
-            </div>
-          </div>
-
-          {/* Right column — phone mockup */}
-          <div className={`${s.heroVisual} animate-up animate-up-d3`}>
-            <PhoneMockup />
-          </div>
+        <div className={`${s.heroCta} animate-up animate-up-d5`}>
+          <a href="#" className={s.ctaBtn}>
+            <svg width="16" height="16" viewBox="0 0 15 18" fill="none" aria-hidden>
+              <path d="M12.573 9.538c-.02-2.107 1.715-3.12 1.794-3.172-0.978-1.43-2.496-1.627-3.038-1.648-1.295-.132-2.528.766-3.183.766-.663 0-1.68-.748-2.763-.727-1.415.021-2.722.826-3.45 2.1-1.473 2.558-.377 6.346 1.057 8.42.7 1.016 1.536 2.152 2.635 2.11 1.06-.044 1.46-.682 2.743-.682 1.276 0 1.643.682 2.764.658 1.14-.02 1.86-.999 2.553-2.02.808-1.156 1.14-2.277 1.158-2.337-.025-.011-2.246-.862-2.27-3.468z" fill="white"/>
+              <path d="M10.44 3.26C11.008 2.577 11.393 1.639 11.284.68c-.81.034-1.794.54-2.382 1.222-.52.605-.977 1.574-.854 2.502.9.07 1.818-.457 2.393-1.144z" fill="white"/>
+            </svg>
+            App Store
+          </a>
+          <a href="#" className={s.ctaBtnSecondary}>
+            <svg width="17" height="17" viewBox="0 0 512 512" aria-hidden>
+              <path d="M325.3 234.3L104.6 13l280.8 161.2-60.1 60.1z" fill="#EA4335"/>
+              <path d="M19.3 0C13.5 2.6 9.3 8.3 9.3 16v480c0 7.7 4.2 13.4 10 16l242-242-242-270z" fill="#4285F4"/>
+              <path d="M386.1 338.8L299.8 256l86.3-82.8 108.8 62.6c31 17.9 31 47 0 64.9l-108.8 38.1z" fill="#FBBC04"/>
+              <path d="M104.6 499l220.7-220.7 60.1 60.1L104.6 499z" fill="#34A853"/>
+            </svg>
+            Google Play
+          </a>
         </div>
 
         <div className={s.heroDivider} aria-hidden />
