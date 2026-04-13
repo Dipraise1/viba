@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Viba",
+    "slug": "viba",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#0A0A12"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.viba.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0A12"
+      },
+      "package": "com.viba.app"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Viba needs camera access to broadcast your live stream.",
+          "microphonePermission": "Viba needs microphone access to include audio in your live stream.",
+          "recordAudioAndroid": true
+        }
+      ]
+    ],
+    "scheme": "viba",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
