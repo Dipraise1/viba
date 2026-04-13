@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@/constants/colors';
 import { useApp, Quality, Orientation, Camera, CommentVisibility } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 
 // ─── Reusable row components ───────────────────────────────────────────────
 
@@ -141,6 +142,7 @@ function GroupCard({ children }: { children: React.ReactNode }) {
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { streamSettings, notifications, privacy, updateStreamSettings, updateNotifications, updatePrivacy } = useApp();
+  const { signOut } = useAuth();
 
   const handleDeleteAccount = () => {
     Alert.alert(
@@ -165,7 +167,10 @@ export default function SettingsScreen() {
       {
         text: 'Sign Out',
         style: 'destructive',
-        onPress: () => router.replace('/onboarding/welcome'),
+        onPress: async () => {
+          await signOut();
+          // AuthGate in _layout.tsx handles the redirect to login
+        },
       },
     ]);
   };

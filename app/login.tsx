@@ -5,7 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
+  Alert,
   Platform,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -19,15 +19,14 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withSequence,
-  withTiming,
 } from 'react-native-reanimated';
-import Svg, { Path, ClipPath, Defs, G, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { Colors } from '@/constants/colors';
+import { useAuth } from '@/context/AuthContext';
 
-const { width } = Dimensions.get('window');
-
-// ─── Real Google "G" logo ─────────────────────────────────────────────────────
+// ─── Google "G" logo ──────────────────────────────────────────────────────────
 
 function GoogleLogo({ size = 20 }: { size?: number }) {
   return (
@@ -72,11 +71,7 @@ function AuthButton({
             end={{ x: 1, y: 0 }}
             style={btnStyles.gradientInner}
           >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              children
-            )}
+            {loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : children}
           </LinearGradient>
         </TouchableOpacity>
       </Animated.View>
@@ -166,25 +161,49 @@ const dividerStyles = StyleSheet.create({
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
-type LoadingState = null | 'google' | 'apple' | 'guest';
+type LoadingState = null | 'google' | 'apple' | 'email';
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState<LoadingState>(null);
+  const { signInWithGoogle, signInWithApple } = useAuth();
 
-  const signIn = (method: LoadingState) => {
+  const handleGoogle = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setLoading(method);
-    // Simulate auth round-trip
-    setTimeout(() => {
+    setLoading('google');
+    try {
+      await signInWithGoogle();
+      // AuthGate in _layout.tsx handles the redirect to (tabs)
+    } catch (e: any) {
+      if (e?.message !== 'User cancelled') {
+        Alert.alert('Sign in failed', e?.message ?? 'Something went wrong. Please try again.');
+      }
+    } finally {
       setLoading(null);
-      router.replace('/(tabs)');
-    }, 1600);
+    }
+  };
+
+  const handleApple = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setLoading('apple');
+    try {
+      await signInWithApple();
+    } catch (e: any) {
+      if (e?.code !== 'ERR_REQUEST_CANCELED') {
+        Alert.alert('Sign in failed', e?.message ?? 'Something went wrong. Please try again.');
+      }
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleEmail = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push('/auth/email');
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      {/* Subtle gradient background */}
       <LinearGradient
         colors={['rgba(123,47,255,0.07)', Colors.bg, 'rgba(255,45,135,0.07)']}
         style={StyleSheet.absoluteFill}
@@ -193,7 +212,7 @@ export default function LoginScreen() {
         pointerEvents="none"
       />
 
-      {/* Logo area */}
+      {/* Logo */}
       <Animated.View entering={ZoomIn.delay(100).duration(600).springify()} style={styles.logoArea}>
         <LinearGradient
           colors={['#FF2D87', '#A855F7', '#7B2FFF']}
@@ -213,21 +232,19 @@ export default function LoginScreen() {
 
       {/* Auth buttons */}
       <Animated.View entering={FadeInUp.delay(500).duration(600)} style={styles.authArea}>
-        {/* Google */}
         <AuthButton
           variant="outline"
-          onPress={() => signIn('google')}
+          onPress={handleGoogle}
           loading={loading === 'google'}
         >
           <GoogleLogo size={20} />
           <Text style={styles.authBtnText}>Continue with Google</Text>
         </AuthButton>
 
-        {/* Apple — iOS only */}
         {Platform.OS === 'ios' && (
           <AuthButton
             variant="apple"
-            onPress={() => signIn('apple')}
+            onPress={handleApple}
             loading={loading === 'apple'}
           >
             <Text style={styles.appleLogo}></Text>
@@ -237,17 +254,16 @@ export default function LoginScreen() {
 
         <OrDivider />
 
-        {/* Guest / email */}
         <AuthButton
           variant="gradient"
-          onPress={() => signIn('guest')}
-          loading={loading === 'guest'}
+          onPress={handleEmail}
+          loading={loading === 'email'}
         >
           <Text style={styles.gradientBtnText}>Sign in with Email</Text>
         </AuthButton>
       </Animated.View>
 
-      {/* Footer links */}
+      {/* Footer */}
       <Animated.View entering={FadeInUp.delay(700).duration(500)} style={styles.footer}>
         <TouchableOpacity
           onPress={() => router.replace('/onboarding/welcome')}
@@ -266,6 +282,16 @@ export default function LoginScreen() {
           {' '}and{' '}
           <Text style={styles.legalLink}>Privacy Policy</Text>
         </Text>
+
+        {__DEV__ && (
+          <TouchableOpacity
+            onPress={() => router.replace('/(tabs)')}
+            activeOpacity={0.7}
+            style={styles.devSkipBtn}
+          >
+            <Text style={styles.devSkipText}>⚡ Dev: skip login</Text>
+          </TouchableOpacity>
+        )}
       </Animated.View>
     </View>
   );
@@ -359,5 +385,19 @@ const styles = StyleSheet.create({
   legalLink: {
     color: Colors.textSecondary,
     textDecorationLine: 'underline',
+  },
+  devSkipBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderStyle: 'dashed',
+  },
+  devSkipText: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 12,
+    color: Colors.textMuted,
   },
 });

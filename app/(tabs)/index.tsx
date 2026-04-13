@@ -24,6 +24,7 @@ import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { PLATFORMS } from '@/constants/platforms';
 import { useApp } from '@/context/AppContext';
+import { MIN_VIBA_TO_STREAM } from '@/context/AppContext';
 
 const { width } = Dimensions.get('window');
 
@@ -267,8 +268,9 @@ const recentStyles = StyleSheet.create({
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
-  const { profile, platforms } = useApp();
+  const { profile, platforms, unreadCount, tokenBalance } = useApp();
   const connectedCount = platforms.filter((p) => p.connected).length;
+  const canStream = tokenBalance >= MIN_VIBA_TO_STREAM;
 
   return (
     <ScrollView
@@ -282,9 +284,17 @@ export default function DashboardScreen() {
           <Text style={styles.greeting}>Good evening</Text>
           <Text style={styles.username}>{profile.handle}</Text>
         </View>
-        <TouchableOpacity style={styles.notifBtn} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.notifBtn}
+          activeOpacity={0.7}
+          onPress={() => router.push('/notifications')}
+        >
           <Ionicons name="notifications-outline" size={22} color={Colors.textSecondary} />
-          <View style={styles.notifBadge} />
+          {unreadCount > 0 && (
+            <View style={styles.notifBadge}>
+              <Text style={styles.notifBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </Animated.View>
 
@@ -307,7 +317,7 @@ export default function DashboardScreen() {
               <Text style={styles.bannerReadyText}>Ready to go live</Text>
             </View>
             <Text style={styles.bannerTitle}>Start streaming now</Text>
-            <Text style={styles.bannerSub}>{connectedCount} platform{connectedCount !== 1 ? 's' : ''} connected</Text>
+            <Text style={styles.bannerSub}>{connectedCount} platform{connectedCount !== 1 ? 's' : ''} connected · earn $VIBA</Text>
           </View>
           <View style={styles.bannerRight}>
             <View style={styles.bannerBtn}>
@@ -327,6 +337,33 @@ export default function DashboardScreen() {
         <StreamStatCard label="Gifts" value="$312" sub="+34%" color={Colors.gold} delay={300} />
         <StreamStatCard label="Follows" value="890" sub="+12%" color={Colors.purpleLight} delay={350} />
       </View>
+
+      {/* Viba Token earnings card */}
+      <Animated.View entering={FadeInDown.delay(370).duration(500)}>
+        <View style={styles.tokenCard}>
+          <LinearGradient
+            colors={['rgba(123,47,255,0.18)', 'rgba(255,45,135,0.10)']}
+            style={[StyleSheet.absoluteFill, { borderRadius: 16 }]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+          <View style={styles.tokenLeft}>
+            <View style={styles.tokenBadge}>
+              <Text style={styles.tokenBadgeText}>$VIBA</Text>
+            </View>
+            <Text style={styles.tokenTitle}>Token earnings</Text>
+            <Text style={styles.tokenSub}>Earned from streaming</Text>
+          </View>
+          <View style={styles.tokenRight}>
+            <Text style={styles.tokenAmount}>1,240</Text>
+            <Text style={styles.tokenAmountUnit}>$VIBA</Text>
+            <View style={styles.tokenGain}>
+              <Ionicons name="trending-up" size={11} color="#34D399" />
+              <Text style={styles.tokenGainText}>+180 this week</Text>
+            </View>
+          </View>
+        </View>
+      </Animated.View>
 
       {/* Connected platforms */}
       <Animated.View entering={FadeInDown.delay(400).duration(500)} style={styles.sectionHeader}>
@@ -417,14 +454,22 @@ const styles = StyleSheet.create({
   },
   notifBadge: {
     position: 'absolute',
-    top: 9,
-    right: 9,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    top: 6,
+    right: 6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
     backgroundColor: Colors.pink,
     borderWidth: 1.5,
     borderColor: Colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  notifBadgeText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 9,
+    color: '#FFFFFF',
   },
   goLiveBanner: {
     borderRadius: 16,
@@ -500,5 +545,70 @@ const styles = StyleSheet.create({
   },
   recentList: {
     gap: 10,
+  },
+  tokenCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(123,47,255,0.3)',
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+  },
+  tokenLeft: {
+    gap: 4,
+    flex: 1,
+  },
+  tokenBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(123,47,255,0.25)',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    marginBottom: 2,
+  },
+  tokenBadgeText: {
+    fontFamily: 'Syne-Bold',
+    fontSize: 10,
+    color: '#C084FC',
+    letterSpacing: 1,
+  },
+  tokenTitle: {
+    fontFamily: 'Syne-Bold',
+    fontSize: 15,
+    color: Colors.textPrimary,
+  },
+  tokenSub: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  tokenRight: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  tokenAmount: {
+    fontFamily: 'Syne-ExtraBold',
+    fontSize: 26,
+    background: 'linear-gradient(90deg, #FF2D87, #7B2FFF)',
+    color: '#C084FC',
+  },
+  tokenAmountUnit: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 12,
+    color: 'rgba(192,132,252,0.6)',
+    marginTop: -4,
+  },
+  tokenGain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 4,
+  },
+  tokenGainText: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 11,
+    color: '#34D399',
   },
 });

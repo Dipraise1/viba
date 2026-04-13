@@ -11,7 +11,9 @@ import {
   KeyboardAvoidingView,
   FlatList,
   Keyboard,
+  Alert,
 } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -36,7 +38,9 @@ import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@/constants/colors';
 import { PLATFORMS, PlatformId, getPlatform } from '@/constants/platforms';
-import { useApp } from '@/context/AppContext';
+import { useApp, MIN_VIBA_TO_STREAM, VIBA_EARN_RATE } from '@/context/AppContext';
+import { startStreamSession, endStreamSession } from '@/lib/streams';
+import { notifyStreamEnded, notifyViewerMilestone } from '@/lib/notifications';
 
 const { width, height } = Dimensions.get('window');
 
@@ -278,6 +282,8 @@ function SetupScreen({
   onToggleMic,
   connectedPlatforms,
   insets,
+  tokenBalance,
+  canStream,
 }: {
   selectedIds: Set<PlatformId>;
   onToggle: (id: PlatformId) => void;
@@ -291,6 +297,8 @@ function SetupScreen({
   onToggleMic: () => void;
   connectedPlatforms: PlatformId[];
   insets: { top: number; bottom: number };
+  tokenBalance: number;
+  canStream: boolean;
 }) {
   const [titleFocused, setTitleFocused] = useState(false);
 
@@ -378,12 +386,23 @@ function SetupScreen({
             })}
           </ScrollView>
 
+          {/* Token status */}
+          <View style={setupStyles.tokenRow}>
+            <View style={[setupStyles.tokenPill, canStream ? setupStyles.tokenPillOk : setupStyles.tokenPillWarn]}>
+              <Text style={[setupStyles.tokenPillText, { color: canStream ? Colors.success : Colors.gold }]}>
+                {tokenBalance} $VIBA
+              </Text>
+              <Text style={[setupStyles.tokenPillSub, { color: canStream ? 'rgba(0,217,126,0.6)' : 'rgba(255,184,0,0.6)' }]}>
+                {canStream ? `+${VIBA_EARN_RATE}/sec while live` : `Need ${MIN_VIBA_TO_STREAM} to stream`}
+              </Text>
+            </View>
+          </View>
+
           {/* Go live button */}
           <TouchableOpacity
-            style={[setupStyles.goLiveBtn, selectedIds.size === 0 && setupStyles.goLiveBtnDisabled]}
+            style={[setupStyles.goLiveBtn, (selectedIds.size === 0 || !canStream) && setupStyles.goLiveBtnDisabled]}
             onPress={onGoLive}
             activeOpacity={0.85}
-            disabled={selectedIds.size === 0}
           >
             <LinearGradient
               colors={selectedIds.size === 0 ? ['#333', '#222'] : ['#FF2D87', '#7B2FFF']}
@@ -512,6 +531,32 @@ const setupStyles = StyleSheet.create({
     fontSize: 17,
     color: '#FFFFFF',
   },
+  tokenRow: { width: '100%' },
+  tokenPill: {
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  tokenPillOk: {
+    backgroundColor: 'rgba(0,217,126,0.08)',
+    borderColor: 'rgba(0,217,126,0.2)',
+  },
+  tokenPillWarn: {
+    backgroundColor: 'rgba(255,184,0,0.08)',
+    borderColor: 'rgba(255,184,0,0.2)',
+  },
+  tokenPillText: {
+    fontFamily: 'Syne-Bold',
+    fontSize: 14,
+  },
+  tokenPillSub: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 12,
+  },
 });
 
 // ─── Live overlay screen ──────────────────────────────────────────────────────
@@ -630,6 +675,9 @@ function LiveScreen({
               <Text style={liveStyles.liveLabel}>LIVE</Text>
             </View>
             <Text style={liveStyles.timer}>{formatTime(liveSeconds)}</Text>
+            <View style={liveStyles.tokenEarnPill}>
+              <Text style={liveStyles.tokenEarnText}>+{liveSeconds} $VIBA</Text>
+            </View>
           </View>
           <View style={liveStyles.viewerPill}>
             <Ionicons name="eye-outline" size={13} color="rgba(255,255,255,0.8)" />
@@ -748,7 +796,21 @@ const liveStyles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 14,
   },
-  topLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  topLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
+  tokenEarnPill: {
+    backgroundColor: 'rgba(168,85,247,0.25)',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(168,85,247,0.4)',
+  },
+  tokenEarnText: {
+    fontFamily: 'Syne-Bold',
+    fontSize: 10,
+    color: '#C084FC',
+    letterSpacing: 0.5,
+  },
   livePill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -823,7 +885,7 @@ const liveStyles = StyleSheet.create({
   commentOverlay: {
     position: 'absolute',
     left: 12,
-    right: 100,
+    right: 80,
     justifyContent: 'flex-end',
   },
   replyBar: {
@@ -960,11 +1022,154 @@ const startStyles = StyleSheet.create({
   },
 });
 
+// ─── Stream ended screen ──────────────────────────────────────────────────────
+
+function StreamEndedScreen({
+  liveSeconds,
+  viewerCount,
+  selectedIds,
+  insets,
+}: {
+  liveSeconds: number;
+  viewerCount: number;
+  selectedIds: Set<PlatformId>;
+  insets: { top: number; bottom: number };
+}) {
+  const formatTime = (s: number) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  };
+
+  return (
+    <View style={[endedStyles.container, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 24 }]}>
+      <Animated.View entering={ZoomIn.duration(400).springify()} style={endedStyles.iconWrap}>
+        <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={endedStyles.iconCircle} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <Ionicons name="stop-circle" size={40} color="#FFFFFF" />
+        </LinearGradient>
+      </Animated.View>
+
+      <Animated.Text entering={FadeInDown.delay(150).duration(400)} style={endedStyles.title}>
+        Stream ended
+      </Animated.Text>
+      <Animated.Text entering={FadeInDown.delay(220).duration(400)} style={endedStyles.sub}>
+        Great stream! Here's how it went.
+      </Animated.Text>
+
+      <Animated.View entering={FadeInDown.delay(300).duration(400)} style={endedStyles.statsRow}>
+        <View style={endedStyles.statCard}>
+          <Text style={endedStyles.statValue}>{formatTime(liveSeconds)}</Text>
+          <Text style={endedStyles.statLabel}>Duration</Text>
+        </View>
+        <View style={endedStyles.statDivider} />
+        <View style={endedStyles.statCard}>
+          <Text style={endedStyles.statValue}>{viewerCount.toLocaleString()}</Text>
+          <Text style={endedStyles.statLabel}>Peak viewers</Text>
+        </View>
+        <View style={endedStyles.statDivider} />
+        <View style={endedStyles.statCard}>
+          <Text style={endedStyles.statValue}>{selectedIds.size}</Text>
+          <Text style={endedStyles.statLabel}>Platforms</Text>
+        </View>
+      </Animated.View>
+
+      <Animated.View entering={FadeInDown.delay(380).duration(400)} style={endedStyles.platformsRow}>
+        {Array.from(selectedIds).map((id) => {
+          const p = getPlatform(id);
+          return (
+            <View key={id} style={[endedStyles.platformDot, { backgroundColor: p.gradient[0] as string }]}>
+              <FontAwesome5 name={p.icon} size={13} color="#FFFFFF" solid />
+            </View>
+          );
+        })}
+      </Animated.View>
+
+      <Animated.Text entering={FadeInDown.delay(460).duration(400)} style={endedStyles.returning}>
+        Returning to setup…
+      </Animated.Text>
+    </View>
+  );
+}
+
+const endedStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.bg,
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    gap: 16,
+  },
+  iconWrap: { marginBottom: 4 },
+  iconCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontFamily: 'Syne-ExtraBold',
+    fontSize: 28,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  sub: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 15,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.bgCard,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    width: '100%',
+    marginTop: 8,
+  },
+  statCard: { flex: 1, alignItems: 'center', gap: 4 },
+  statDivider: { width: 1, height: 36, backgroundColor: Colors.border },
+  statValue: {
+    fontFamily: 'Syne-ExtraBold',
+    fontSize: 22,
+    color: Colors.textPrimary,
+  },
+  statLabel: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  platformsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  platformDot: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  returning: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 13,
+    color: Colors.textMuted,
+    marginTop: 8,
+  },
+});
+
 // ─── Root component ───────────────────────────────────────────────────────────
 
 export default function GoLiveTab() {
   const insets = useSafeAreaInsets();
-  const { platforms, streamSettings } = useApp();
+  const { platforms, streamSettings, tokenBalance, addTokens, addNotification } = useApp();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
 
@@ -980,18 +1185,42 @@ export default function GoLiveTab() {
   const [viewerCount, setViewerCount] = useState(0);
   const [comments, setComments] = useState<LiveComment[]>([]);
   const commentIndexRef = useRef(0);
+  const sessionIdRef = useRef<string | null>(null);
+  const peakViewersRef = useRef(0);
+  const milestonesFiredRef = useRef<Set<number>>(new Set());
 
   // Sync selected when connected changes
   useEffect(() => {
     if (status === 'setup') setSelectedIds(new Set(connectedPlatforms));
   }, [platforms]);
 
-  // Live timer + fake viewer growth
+  // Live timer + 1 token/sec earning + viewer growth + milestones
   useEffect(() => {
     if (status !== 'live') return;
     const timer = setInterval(() => {
+      // Earn 1 $VIBA per second
+      addTokens(VIBA_EARN_RATE, 'Stream earnings');
+
       setLiveSeconds((s) => s + 1);
-      if (Math.random() < 0.55) setViewerCount((v) => v + Math.floor(Math.random() * 9 + 1));
+      if (Math.random() < 0.55) {
+        setViewerCount((v) => {
+          const next = v + Math.floor(Math.random() * 9 + 1);
+          if (next > peakViewersRef.current) peakViewersRef.current = next;
+          const milestones = [100, 500, 1000, 5000, 10000];
+          for (const m of milestones) {
+            if (next >= m && !milestonesFiredRef.current.has(m)) {
+              milestonesFiredRef.current.add(m);
+              notifyViewerMilestone(m);
+              addNotification({
+                type: 'milestone',
+                title: `${m.toLocaleString()} viewers!`,
+                body: `You just hit ${m.toLocaleString()} concurrent viewers across all platforms.`,
+              });
+            }
+          }
+          return next;
+        });
+      }
     }, 1000);
     return () => clearInterval(timer);
   }, [status]);
@@ -1021,26 +1250,55 @@ export default function GoLiveTab() {
     });
   };
 
-  const handleGoLive = () => {
+  const handleGoLive = async () => {
     if (selectedIds.size === 0) return;
+    // Token gate — must hold MIN_VIBA_TO_STREAM tokens
+    if (tokenBalance < MIN_VIBA_TO_STREAM) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(
+        'Insufficient $VIBA',
+        `You need at least ${MIN_VIBA_TO_STREAM} $VIBA tokens to go live. You currently have ${tokenBalance}.\n\nGo to your Wallet to buy more tokens.`,
+        [
+          { text: 'Open Wallet', onPress: () => router.push('/(tabs)/wallet') },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    peakViewersRef.current = 0;
+    milestonesFiredRef.current = new Set();
     setStatus('starting');
+    // Save session start to DB
+    const id = await startStreamSession(streamTitle, Array.from(selectedIds));
+    sessionIdRef.current = id;
     setTimeout(() => {
       setStatus('live');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }, 2200);
   };
 
-  const handleEndStream = () => {
+  const handleEndStream = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     setStatus('stopping');
+    // Save session end to DB and fire notification
+    if (sessionIdRef.current) {
+      await endStreamSession(sessionIdRef.current, liveSeconds, peakViewersRef.current);
+      sessionIdRef.current = null;
+    }
+    notifyStreamEnded(liveSeconds, peakViewersRef.current);
+    addNotification({
+      type: 'milestone',
+      title: 'Stream ended',
+      body: `You earned ${liveSeconds} $VIBA in ${Math.floor(liveSeconds / 60)}m ${liveSeconds % 60}s with ${peakViewersRef.current.toLocaleString()} peak viewers.`,
+    });
     setTimeout(() => {
       setStatus('setup');
       setLiveSeconds(0);
       setViewerCount(0);
       setComments([]);
       commentIndexRef.current = 0;
-    }, 800);
+    }, 2800);
   };
 
   // ── Permissions ──────────────────────────────────────────────────────────────
@@ -1062,8 +1320,8 @@ export default function GoLiveTab() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
-      {/* Setup or Live view */}
-      {(status === 'setup' || status === 'stopping') && (
+      {/* Setup view */}
+      {status === 'setup' && (
         <SetupScreen
           selectedIds={selectedIds}
           onToggle={togglePlatform}
@@ -1076,6 +1334,18 @@ export default function GoLiveTab() {
           micEnabled={micEnabled}
           onToggleMic={() => { Haptics.selectionAsync(); setMicEnabled((m) => !m); }}
           connectedPlatforms={connectedPlatforms}
+          insets={insets}
+          tokenBalance={tokenBalance}
+          canStream={tokenBalance >= MIN_VIBA_TO_STREAM}
+        />
+      )}
+
+      {/* Stream ended summary — camera is closed */}
+      {status === 'stopping' && (
+        <StreamEndedScreen
+          liveSeconds={liveSeconds}
+          viewerCount={viewerCount}
+          selectedIds={selectedIds}
           insets={insets}
         />
       )}

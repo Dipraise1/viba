@@ -4,6 +4,7 @@ import { Tabs, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
+import { useApp } from '@/context/AppContext';
 
 type TabItem = {
   name: string;
@@ -16,12 +17,13 @@ const TABS: TabItem[] = [
   { name: 'index', label: 'Home', icon: 'home-outline', iconActive: 'home' },
   { name: 'live', label: 'Go Live', icon: 'radio-outline', iconActive: 'radio' },
   { name: 'comments', label: 'Activity', icon: 'chatbubbles-outline', iconActive: 'chatbubbles' },
-  { name: 'gifts', label: 'Gifts', icon: 'gift-outline', iconActive: 'gift' },
+  { name: 'wallet', label: 'Wallet', icon: 'wallet-outline', iconActive: 'wallet' },
   { name: 'profile', label: 'Profile', icon: 'person-outline', iconActive: 'person' },
 ];
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
   const insets = useSafeAreaInsets();
+  const { unreadCount, tokenBalance } = useApp();
 
   return (
     <View style={[styles.tabBar, { paddingBottom: insets.bottom + 6 }]}>
@@ -55,6 +57,12 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
             );
           }
 
+          const badge = route.name === 'index' && unreadCount > 0
+            ? unreadCount
+            : route.name === 'wallet' && tokenBalance < 10
+            ? '!'
+            : null;
+
           return (
             <TouchableOpacity key={route.key} onPress={onPress} style={styles.tabItem} activeOpacity={0.7}>
               <View style={[styles.iconWrap, isFocused && styles.iconWrapActive]}>
@@ -63,6 +71,11 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
                   size={22}
                   color={isFocused ? Colors.pink : Colors.textMuted}
                 />
+                {badge && (
+                  <View style={styles.tabBadge}>
+                    <Text style={styles.tabBadgeText}>{badge}</Text>
+                  </View>
+                )}
               </View>
               <Text style={[styles.tabLabel, isFocused && styles.tabLabelActive]}>
                 {tab.label}
@@ -86,7 +99,7 @@ export default function TabLayout() {
       <Tabs.Screen name="index" />
       <Tabs.Screen name="live" />
       <Tabs.Screen name="comments" />
-      <Tabs.Screen name="gifts" />
+      <Tabs.Screen name="wallet" />
       <Tabs.Screen name="profile" />
     </Tabs>
   );
@@ -145,5 +158,24 @@ const styles = StyleSheet.create({
   },
   tabLabelLive: {
     color: Colors.textSecondary,
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.pink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: Colors.bg,
+  },
+  tabBadgeText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 9,
+    color: '#FFFFFF',
   },
 });

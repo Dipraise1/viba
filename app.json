@@ -32,6 +32,23 @@
           "microphonePermission": "Viba needs microphone access to include audio in your live stream.",
           "recordAudioAndroid": true
         }
+      ],
+      "expo-web-browser",
+      "expo-secure-store",
+      "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Viba needs access to your photos to set a profile picture."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#FF2D87",
+          "sounds": []
+        }
       ]
     ],
     "scheme": "viba",

@@ -158,7 +158,7 @@ export default function CommentsScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View>
-          <Text style={styles.headerTitle}>Comments</Text>
+          <Text style={styles.headerTitle}>Activity</Text>
           <Text style={styles.headerSub}>Unified feed · all platforms</Text>
         </View>
         <View style={styles.liveIndicator}>

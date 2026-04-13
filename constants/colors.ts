@@ -50,4 +50,10 @@ export const Colors = {
   successDim: 'rgba(0, 217, 126, 0.15)',
   gold: '#FFB800',
   goldDim: 'rgba(255, 184, 0, 0.15)',
+
+  // Viba token
+  viba: '#C084FC',
+  vibaBright: '#A855F7',
+  vibaDim: 'rgba(168, 85, 247, 0.15)',
+  vibaGlow: 'rgba(168, 85, 247, 0.25)',
 };

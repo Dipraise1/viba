@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Image,
   Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +20,8 @@ import * as Haptics from 'expo-haptics';
 import { Colors } from '@/constants/colors';
 import { getPlatform, PlatformId } from '@/constants/platforms';
 import { useApp } from '@/context/AppContext';
+import { pickAndUploadAvatar } from '@/lib/avatar';
+import { fetchStreamStats, fetchRecentStreams, StreamSession } from '@/lib/streams';
 
 type OAuthStage = 'confirm' | 'loading' | 'success';
 
@@ -133,8 +136,27 @@ export default function ProfileScreen() {
   const { profile, platforms, togglePlatform } = useApp();
   const [oauthTarget, setOauthTarget] = useState<PlatformId | null>(null);
   const [oauthVisible, setOauthVisible] = useState(false);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [stats, setStats] = useState({ totalStreams: 0, totalViewers: 0, totalEarnedUsd: 0 });
+  const [recentStreams, setRecentStreams] = useState<StreamSession[]>([]);
 
   const connectedCount = platforms.filter((p) => p.connected).length;
+
+  useEffect(() => {
+    fetchStreamStats().then(setStats);
+    fetchRecentStreams(3).then(setRecentStreams);
+  }, []);
+
+  const handleAvatarPress = async () => {
+    setUploadingAvatar(true);
+    try {
+      const url = await pickAndUploadAvatar();
+      if (url) setAvatarUri(url);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const handleDisconnect = (id: PlatformId, name: string) => {
     Alert.alert(
@@ -192,21 +214,31 @@ export default function ProfileScreen() {
             style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
           />
           <View style={styles.profileTop}>
-            <View style={styles.avatarWrap}>
-              <LinearGradient
-                colors={['#FF2D87', '#7B2FFF']}
-                style={styles.avatar}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Text style={styles.avatarInitial}>
-                  {profile.displayName.charAt(0).toUpperCase()}
-                </Text>
-              </LinearGradient>
-              {connectedCount > 0 && (
-                <View style={styles.onlineBadge} />
+            <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.85} style={styles.avatarWrap}>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
+              ) : (
+                <LinearGradient
+                  colors={['#FF2D87', '#7B2FFF']}
+                  style={styles.avatar}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Text style={styles.avatarInitial}>
+                    {profile.displayName.charAt(0).toUpperCase()}
+                  </Text>
+                </LinearGradient>
               )}
-            </View>
+              {uploadingAvatar && (
+                <View style={styles.avatarOverlay}>
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                </View>
+              )}
+              <View style={styles.avatarEditBadge}>
+                <Ionicons name="camera" size={10} color="#FFFFFF" />
+              </View>
+              {connectedCount > 0 && <View style={styles.onlineBadge} />}
+            </TouchableOpacity>
             <View style={styles.profileMeta}>
               <Text style={styles.profileName}>{profile.displayName}</Text>
               <Text style={styles.profileHandle}>{profile.handle}</Text>
@@ -224,20 +256,26 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Stats */}
+          {/* Stats — real data from DB */}
           <View style={styles.statsRow}>
             <View style={styles.stat}>
-              <Text style={styles.statValue}>42</Text>
+              <Text style={styles.statValue}>{stats.totalStreams}</Text>
               <Text style={styles.statLabel}>Streams</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.stat}>
-              <Text style={styles.statValue}>18.4K</Text>
+              <Text style={styles.statValue}>
+                {stats.totalViewers >= 1000
+                  ? `${(stats.totalViewers / 1000).toFixed(1)}K`
+                  : stats.totalViewers.toString()}
+              </Text>
               <Text style={styles.statLabel}>Total viewers</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.stat}>
-              <Text style={[styles.statValue, { color: Colors.gold }]}>$4.9K</Text>
+              <Text style={[styles.statValue, { color: Colors.gold }]}>
+                ${stats.totalEarnedUsd.toFixed(0)}
+              </Text>
               <Text style={styles.statLabel}>Earned</Text>
             </View>
           </View>
@@ -301,31 +339,46 @@ export default function ProfileScreen() {
       </Animated.View>
 
       <View style={styles.historyList}>
-        {[
-          { title: 'Saturday Night Stream', date: 'Yesterday', viewers: '1.2K', gifts: '$94', duration: '1h 42m' },
-          { title: 'Q&A with followers', date: '3 days ago', viewers: '780', gifts: '$47', duration: '55m' },
-          { title: 'Morning vibes', date: 'Last week', viewers: '420', gifts: '$21', duration: '30m' },
-        ].map((s, i) => (
-          <Animated.View
-            key={s.title}
-            entering={FadeInDown.delay(560 + i * 50).duration(400)}
-            style={styles.historyRow}
-          >
-            <View style={styles.historyDot} />
-            <View style={styles.historyInfo}>
-              <Text style={styles.historyTitle}>{s.title}</Text>
-              <View style={styles.historyMeta}>
-                <Text style={styles.historyMetaText}>{s.date}</Text>
-                <Text style={styles.historyMetaDot}>·</Text>
-                <Text style={styles.historyMetaText}>{s.duration}</Text>
-                <Text style={styles.historyMetaDot}>·</Text>
-                <Ionicons name="eye-outline" size={11} color={Colors.textMuted} />
-                <Text style={styles.historyMetaText}>{s.viewers}</Text>
-              </View>
-            </View>
-            <Text style={styles.historyGifts}>{s.gifts}</Text>
-          </Animated.View>
-        ))}
+        {recentStreams.length === 0 ? (
+          <View style={styles.emptyHistory}>
+            <Ionicons name="radio-outline" size={28} color={Colors.textMuted} />
+            <Text style={styles.emptyHistoryText}>No streams yet. Go live to see your history here.</Text>
+          </View>
+        ) : (
+          recentStreams.map((s, i) => {
+            const mins = s.duration_secs ? Math.floor(s.duration_secs / 60) : null;
+            const durLabel = mins
+              ? mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`
+              : null;
+            const date = new Date(s.started_at);
+            const dateLabel = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            return (
+              <Animated.View
+                key={s.id}
+                entering={FadeInDown.delay(560 + i * 50).duration(400)}
+                style={styles.historyRow}
+              >
+                <View style={styles.historyDot} />
+                <View style={styles.historyInfo}>
+                  <Text style={styles.historyTitle}>{s.title ?? 'Untitled stream'}</Text>
+                  <View style={styles.historyMeta}>
+                    <Text style={styles.historyMetaText}>{dateLabel}</Text>
+                    {durLabel && <>
+                      <Text style={styles.historyMetaDot}>·</Text>
+                      <Text style={styles.historyMetaText}>{durLabel}</Text>
+                    </>}
+                    <Text style={styles.historyMetaDot}>·</Text>
+                    <Ionicons name="eye-outline" size={11} color={Colors.textMuted} />
+                    <Text style={styles.historyMetaText}>{s.peak_viewers.toLocaleString()}</Text>
+                  </View>
+                </View>
+                <Text style={styles.historyGifts}>
+                  ${parseFloat(s.total_gifts_usd as any ?? '0').toFixed(0)}
+                </Text>
+              </Animated.View>
+            );
+          })
+        )}
       </View>
 
       {/* Settings shortcut */}
@@ -397,6 +450,32 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarImg: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+  },
+  avatarOverlay: {
+    position: 'absolute',
+    inset: 0,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.pink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: Colors.bg,
   },
   avatarInitial: {
     fontFamily: 'Syne-ExtraBold',
@@ -560,6 +639,18 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   historyList: { gap: 0 },
+  emptyHistory: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    gap: 10,
+  },
+  emptyHistoryText: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 13,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
   historyRow: {
     flexDirection: 'row',
     alignItems: 'center',
