@@ -30,6 +30,7 @@ import { AppProvider } from '@/context/AppContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import { registerForPushNotifications } from '@/lib/notifications';
+import { supabase } from '@/lib/supabase';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -100,11 +101,35 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
     const inAuthGroup = segments[0] === '(tabs)';
     const inOnboarding = segments[0] === 'onboarding';
+    const inLogin = segments[0] === 'login';
 
     if (!session && inAuthGroup) {
       router.replace('/login');
-    } else if (session && (segments[0] === 'login' || inOnboarding)) {
-      router.replace('/(tabs)');
+      return;
+    }
+
+    if (session && (inLogin || segments[0] === 'index')) {
+      // Check if user has set a username yet
+      const checkUsername = async () => {
+        const { data } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', session.user.id)
+          .single();
+
+        if (!data?.username) {
+          router.replace('/onboarding/profile');
+        } else {
+          router.replace('/(tabs)');
+        }
+      };
+      checkUsername();
+      return;
+    }
+
+    // Allow moving through onboarding freely
+    if (session && inOnboarding && segments[1] !== 'profile') {
+      // already in onboarding — let them proceed
     }
   }, [session, loading, segments]);
 
@@ -135,6 +160,7 @@ function ThemedApp() {
           <Stack.Screen name="index" />
           <Stack.Screen name="login" />
           <Stack.Screen name="onboarding" />
+          <Stack.Screen name="onboarding/profile" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="edit-profile" options={{ animation: 'slide_from_right' }} />
