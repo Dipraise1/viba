@@ -16,6 +16,7 @@ import {
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import { NodeCameraView } from 'react-native-nodemediaclient';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   useSharedValue,
@@ -42,6 +43,7 @@ import { PLATFORMS, PlatformId, getPlatform } from '@/constants/platforms';
 import { useApp, MIN_VIBA_TO_STREAM, VIBA_EARN_RATE } from '@/context/AppContext';
 import { startStreamSession, endStreamSession } from '@/lib/streams';
 import { notifyStreamEnded, notifyViewerMilestone } from '@/lib/notifications';
+import { createMuxStream, endMuxStream, MuxStreamInfo } from '@/lib/mux';
 
 const { width, height } = Dimensions.get('window');
 
@@ -1204,6 +1206,7 @@ export default function GoLiveTab() {
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
 
   const cameraRef = useRef<CameraView>(null);
+  const nodeCameraRef = useRef<any>(null);
   const connectedPlatforms = platforms.filter((p) => p.connected).map((p) => p.id);
 
   const [facing, setFacing] = useState<CameraType>(streamSettings.camera === 'back' ? 'back' : 'front');
@@ -1216,6 +1219,7 @@ export default function GoLiveTab() {
   const [comments, setComments] = useState<LiveComment[]>([]);
   const commentIndexRef = useRef(0);
   const sessionIdRef = useRef<string | null>(null);
+  const muxInfoRef = useRef<MuxStreamInfo | null>(null);
   const peakViewersRef = useRef(0);
   const milestonesFiredRef = useRef<Set<number>>(new Set());
 
@@ -1282,7 +1286,7 @@ export default function GoLiveTab() {
 
   const handleGoLive = async () => {
     if (selectedIds.size === 0) return;
-    // Token gate — must hold MIN_VIBA_TO_STREAM tokens
+    // Token gate
     if (tokenBalance < MIN_VIBA_TO_STREAM) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert(
@@ -1299,17 +1303,45 @@ export default function GoLiveTab() {
     peakViewersRef.current = 0;
     milestonesFiredRef.current = new Set();
     setStatus('starting');
-    // Save session start to DB
-    const id = await startStreamSession(streamTitle, Array.from(selectedIds));
-    sessionIdRef.current = id;
-    setTimeout(() => {
-      setStatus('live');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }, 2200);
+
+    try {
+      // 1. Create DB session
+      const id = await startStreamSession(streamTitle, Array.from(selectedIds));
+      sessionIdRef.current = id;
+
+      // 2. Create Mux live stream and get RTMP credentials
+      const muxInfo = await createMuxStream(id);
+      muxInfoRef.current = muxInfo;
+
+      // 3. Start RTMP publish via NodeMediaClient
+      if (nodeCameraRef.current) {
+        nodeCameraRef.current.start();
+      }
+
+      setTimeout(() => {
+        setStatus('live');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }, 2200);
+    } catch (e: any) {
+      setStatus('setup');
+      Alert.alert('Failed to go live', e?.message ?? 'Something went wrong. Please try again.');
+    }
   };
 
   const handleEndStream = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+
+    // Stop RTMP publish
+    if (nodeCameraRef.current) {
+      nodeCameraRef.current.stop();
+    }
+
+    // Disable Mux stream
+    if (muxInfoRef.current) {
+      await endMuxStream(muxInfoRef.current.mux_stream_id).catch(() => {});
+      muxInfoRef.current = null;
+    }
+
     setStatus('stopping');
     if (sessionIdRef.current) {
       await endStreamSession(sessionIdRef.current, liveSeconds, peakViewersRef.current);
@@ -1348,9 +1380,33 @@ export default function GoLiveTab() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
+  // Compute NodeCameraView config from current mux info
+  const rtmpOutputUrl = muxInfoRef.current
+    ? `${muxInfoRef.current.rtmp_url}/${muxInfoRef.current.stream_key}`
+    : '';
+
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
-      {/* Setup view */}
+      {/* NodeCameraView handles actual RTMP publish when live/starting */}
+      {(status === 'live' || status === 'starting') && rtmpOutputUrl ? (
+        <NodeCameraView
+          ref={nodeCameraRef}
+          style={StyleSheet.absoluteFill}
+          outputUrl={rtmpOutputUrl}
+          camera={{ cameraFacing: facing === 'front' ? 1 : 0, cameraId: 0 }}
+          audio={{ bitrate: 128000, profile: 1, samplerate: 44100 }}
+          video={{
+            preset: 4, // 720p
+            bitrate: 2000000,
+            profile: 1,
+            fps: 30,
+            videoFrontMirror: facing === 'front',
+          }}
+          autopreview
+        />
+      ) : null}
+
+      {/* Setup view — uses expo CameraView for preview only */}
       {status === 'setup' && (
         <SetupScreen
           selectedIds={selectedIds}
@@ -1370,7 +1426,7 @@ export default function GoLiveTab() {
         />
       )}
 
-      {/* Stream ended summary — camera is closed */}
+      {/* Stream ended summary */}
       {status === 'stopping' && (
         <StreamEndedScreen
           liveSeconds={liveSeconds}
@@ -1383,13 +1439,25 @@ export default function GoLiveTab() {
         />
       )}
 
-      {(status === 'live') && (
+      {status === 'live' && (
         <LiveScreen
           cameraRef={cameraRef}
           facing={facing}
-          onFlip={() => setFacing((f) => (f === 'front' ? 'back' : 'front'))}
+          onFlip={() => {
+            const next = facing === 'front' ? 'back' : 'front';
+            setFacing(next);
+            if (nodeCameraRef.current) {
+              nodeCameraRef.current.switchCamera();
+            }
+          }}
           micEnabled={micEnabled}
-          onToggleMic={() => { Haptics.selectionAsync(); setMicEnabled((m) => !m); }}
+          onToggleMic={() => {
+            Haptics.selectionAsync();
+            setMicEnabled((m) => {
+              if (nodeCameraRef.current) nodeCameraRef.current.toggleMute();
+              return !m;
+            });
+          }}
           onEndStream={handleEndStream}
           liveSeconds={liveSeconds}
           viewerCount={viewerCount}
@@ -1403,11 +1471,7 @@ export default function GoLiveTab() {
 
       {/* Starting overlay on top */}
       {status === 'starting' && (
-        <>
-          {/* Still show camera during starting */}
-          <CameraView style={StyleSheet.absoluteFill} facing={facing} />
-          <StartingOverlay selectedIds={selectedIds} />
-        </>
+        <StartingOverlay selectedIds={selectedIds} />
       )}
     </View>
   );

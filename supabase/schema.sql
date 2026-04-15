@@ -36,7 +36,31 @@ create table if not exists public.stream_sessions (
   ended_at        timestamptz,
   duration_secs   integer,
   peak_viewers    integer not null default 0,
-  total_gifts_usd numeric(10,2) not null default 0
+  total_gifts_usd numeric(10,2) not null default 0,
+  mux_stream_id   text,
+  playback_id     text
+);
+
+-- Platform OAuth tokens (stored server-side, never exposed to client)
+create table if not exists public.platform_tokens (
+  user_id       uuid not null references public.profiles(id) on delete cascade,
+  platform      text not null,
+  access_token  text not null,
+  refresh_token text,
+  expires_at    timestamptz,
+  scope         text,
+  primary key (user_id, platform)
+);
+
+-- Individual gift events per stream
+create table if not exists public.gift_events (
+  id                uuid primary key default gen_random_uuid(),
+  stream_session_id uuid not null references public.stream_sessions(id) on delete cascade,
+  platform          text not null,
+  sender_name       text,
+  amount_usd        numeric(10,2) not null default 0,
+  gift_name         text,
+  timestamp         timestamptz not null default now()
 );
 
 create index if not exists stream_sessions_user_id_idx
@@ -59,6 +83,21 @@ create policy "sessions: own rows insert"
 
 create policy "sessions: own rows update"
   on public.stream_sessions for update using (auth.uid() = user_id);
+
+alter table public.platform_tokens enable row level security;
+alter table public.gift_events enable row level security;
+
+create policy "platform_tokens: own rows"
+  on public.platform_tokens for all using (auth.uid() = user_id);
+
+create policy "gift_events: own stream read"
+  on public.gift_events for select
+  using (
+    exists (
+      select 1 from public.stream_sessions s
+      where s.id = stream_session_id and s.user_id = auth.uid()
+    )
+  );
 
 insert into storage.buckets (id, name, public)
 values ('avatars', 'avatars', true)
