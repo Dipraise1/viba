@@ -1223,6 +1223,18 @@ export default function GoLiveTab() {
   const sessionIdRef = useRef<string | null>(null);
   const peakViewersRef = useRef(0);
   const milestonesFiredRef = useRef<Set<number>>(new Set());
+  const shouldStartRtmpRef = useRef(false);
+
+  // Start RTMP once NodeCameraView has mounted (status flips to 'starting')
+  useEffect(() => {
+    if (status === 'starting' && shouldStartRtmpRef.current) {
+      // Give NodeCameraView one frame to mount before calling start()
+      const t = setTimeout(() => {
+        nodeCameraRef.current?.start();
+      }, 300);
+      return () => clearTimeout(t);
+    }
+  }, [status]);
 
   // Sync selected when connected changes
   useEffect(() => {
@@ -1340,11 +1352,6 @@ export default function GoLiveTab() {
       );
       return;
     }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    peakViewersRef.current = 0;
-    milestonesFiredRef.current = new Set();
-    setStatus('starting');
-
     if (!restreamKey) {
       Alert.alert(
         'Restream not set up',
@@ -1357,15 +1364,18 @@ export default function GoLiveTab() {
       return;
     }
 
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    peakViewersRef.current = 0;
+    milestonesFiredRef.current = new Set();
+
     try {
       // 1. Create DB session
       const id = await startStreamSession(streamTitle, Array.from(selectedIds));
       sessionIdRef.current = id;
 
-      // 2. Start RTMP publish to Restream
-      if (nodeCameraRef.current) {
-        nodeCameraRef.current.start();
-      }
+      // 2. Flag RTMP start — useEffect fires once NodeCameraView mounts
+      shouldStartRtmpRef.current = true;
+      setStatus('starting');
 
       setTimeout(() => {
         setStatus('live');
@@ -1402,6 +1412,7 @@ export default function GoLiveTab() {
   };
 
   const handleStreamAgain = () => {
+    shouldStartRtmpRef.current = false;
     setStatus('setup');
     setLiveSeconds(0);
     setViewerCount(0);
