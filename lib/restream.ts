@@ -162,9 +162,54 @@ export async function fetchRestreamViewers(accessToken: string): Promise<number>
     });
     if (!res.ok) return 0;
     const data = await res.json();
-    // Sum viewers across all channels
     return (data as any[]).reduce((sum: number, ch: any) => sum + (ch.viewers ?? 0), 0);
   } catch {
     return 0;
   }
+}
+
+// ─── Channel sync ──────────────────────────────────────────────────────────────
+
+export interface RestreamChannel {
+  id: number;
+  channelTypeId: number;
+  displayName: string;
+  active: boolean;
+}
+
+/**
+ * Returns the user's connected Restream channels.
+ */
+export async function fetchRestreamChannels(accessToken: string): Promise<RestreamChannel[]> {
+  try {
+    const res = await fetch('https://api.restream.io/v2/user/channel-list', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
+// Maps Restream channelTypeId → our PlatformId
+export const RESTREAM_CHANNEL_MAP: Record<number, string> = {
+  1: 'twitch',
+  2: 'youtube',
+  3: 'facebook',
+  6: 'instagram',
+  7: 'tiktok',
+};
+
+// Deep-link to Restream's "add channel" page for a specific platform
+export const RESTREAM_PLATFORM_URLS: Record<string, string> = {
+  youtube:   'https://app.restream.io/channels/add/youtube',
+  twitch:    'https://app.restream.io/channels/add/twitch',
+  tiktok:    'https://app.restream.io/channels/add/tiktok',
+  facebook:  'https://app.restream.io/channels/add/facebook',
+  instagram: 'https://app.restream.io/channels/add/instagram',
+};
+
+export function getRestreamAddChannelUrl(platformId: string): string {
+  return RESTREAM_PLATFORM_URLS[platformId] ?? 'https://app.restream.io/channels';
 }

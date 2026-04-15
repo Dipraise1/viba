@@ -23,90 +23,77 @@ import { getPlatform, PlatformId } from '@/constants/platforms';
 import { useApp } from '@/context/AppContext';
 import { pickAndUploadAvatar } from '@/lib/avatar';
 import { fetchStreamStats, fetchRecentStreams, StreamSession } from '@/lib/streams';
+import { getRestreamAddChannelUrl } from '@/lib/restream';
+import * as WebBrowser from 'expo-web-browser';
 
-type OAuthStage = 'confirm' | 'loading' | 'success';
-
-function OAuthModal({
+function ConnectModal({
   platformId,
   visible,
-  onSuccess,
+  onDone,
   onCancel,
 }: {
   platformId: PlatformId | null;
   visible: boolean;
-  onSuccess: (id: PlatformId) => void;
+  onDone: () => void;
   onCancel: () => void;
 }) {
-  const [stage, setStage] = useState<OAuthStage>('confirm');
+  const [opening, setOpening] = useState(false);
   const platform = platformId ? getPlatform(platformId) : null;
   const { colors: C } = useTheme();
   const oauthStyles = useMemo(() => makeOAuthStyles(C), [C]);
 
-  const handleAuthorize = () => {
-    if (!platformId || !platform) return;
+  const handleConnect = async () => {
+    if (!platformId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setStage('loading');
-    setTimeout(() => {
-      setStage('success');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTimeout(() => { setStage('confirm'); onSuccess(platformId); }, 900);
-    }, 2000);
+    setOpening(true);
+    const url = getRestreamAddChannelUrl(platformId);
+    await WebBrowser.openBrowserAsync(url, { presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET });
+    setOpening(false);
+    // After browser closes, tell parent to sync
+    onDone();
   };
 
-  const handleCancel = () => { setStage('confirm'); onCancel(); };
   if (!platform || !platformId) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleCancel}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
       <View style={oauthStyles.backdrop}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={handleCancel} activeOpacity={1} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onCancel} activeOpacity={1} />
         <Animated.View entering={FadeInUp.duration(300).springify()} style={oauthStyles.sheet}>
           <View style={oauthStyles.handle} />
           <LinearGradient colors={platform.gradient as any} style={oauthStyles.brandIcon} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
             <FontAwesome5 name={platform.icon} size={30} color="#FFFFFF" solid />
           </LinearGradient>
-          {stage === 'confirm' && (
-            <>
-              <Text style={oauthStyles.title}>Connect {platform.name}</Text>
-              <Text style={oauthStyles.sub}>Viba will stream live on your behalf. We never post without your action.</Text>
-              <View style={oauthStyles.permList}>
-                {['Start and manage live streams', 'Read comments during streams', 'Read gift/reward events'].map((p) => (
-                  <View key={p} style={oauthStyles.permRow}>
-                    <View style={[oauthStyles.permDot, { backgroundColor: platform.gradient[0] as string }]}>
-                      <Ionicons name="checkmark" size={11} color="#FFFFFF" />
-                    </View>
-                    <Text style={oauthStyles.permText}>{p}</Text>
-                  </View>
-                ))}
+          <Text style={oauthStyles.title}>Connect {platform.name}</Text>
+          <Text style={oauthStyles.sub}>
+            You'll be taken to Restream to connect your {platform.name} account. Once connected, come back — Viba will sync automatically.
+          </Text>
+          <View style={oauthStyles.permList}>
+            {['Stream to all your platforms at once', 'See real-time comments in Viba', 'Track viewer counts live'].map((p) => (
+              <View key={p} style={oauthStyles.permRow}>
+                <View style={[oauthStyles.permDot, { backgroundColor: platform.gradient[0] as string }]}>
+                  <Ionicons name="checkmark" size={11} color="#FFFFFF" />
+                </View>
+                <Text style={oauthStyles.permText}>{p}</Text>
               </View>
-              <View style={oauthStyles.actions}>
-                <TouchableOpacity style={oauthStyles.cancelBtn} onPress={handleCancel} activeOpacity={0.7}>
-                  <Text style={oauthStyles.cancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={oauthStyles.authBtn} onPress={handleAuthorize} activeOpacity={0.85}>
-                  <LinearGradient colors={platform.gradient as any} style={oauthStyles.authBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                    <FontAwesome5 name={platform.icon} size={13} color="#FFFFFF" solid />
-                    <Text style={oauthStyles.authBtnText}>Authorize {platform.name}</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-          {stage === 'loading' && (
-            <View style={oauthStyles.center}>
-              <ActivityIndicator color={platform.gradient[0] as string} size="large" />
-              <Text style={oauthStyles.title}>Connecting…</Text>
-              <Text style={oauthStyles.sub}>Redirecting to {platform.name}</Text>
-            </View>
-          )}
-          {stage === 'success' && (
-            <Animated.View entering={ZoomIn.duration(400)} style={oauthStyles.center}>
-              <View style={[oauthStyles.successCircle, { backgroundColor: platform.gradient[0] as string }]}>
-                <Ionicons name="checkmark" size={30} color="#FFFFFF" />
-              </View>
-              <Text style={oauthStyles.title}>{platform.name} connected!</Text>
-            </Animated.View>
-          )}
+            ))}
+          </View>
+          <View style={oauthStyles.actions}>
+            <TouchableOpacity style={oauthStyles.cancelBtn} onPress={onCancel} activeOpacity={0.7}>
+              <Text style={oauthStyles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={oauthStyles.authBtn} onPress={handleConnect} activeOpacity={0.85} disabled={opening}>
+              <LinearGradient colors={platform.gradient as any} style={oauthStyles.authBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                {opening
+                  ? <ActivityIndicator color="#FFFFFF" size="small" />
+                  : <>
+                      <FontAwesome5 name={platform.icon} size={13} color="#FFFFFF" solid />
+                      <Text style={oauthStyles.authBtnText}>Connect on Restream</Text>
+                    </>
+                }
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         </Animated.View>
       </View>
     </Modal>
@@ -138,11 +125,12 @@ function makeOAuthStyles(C: AppColors) {
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { profile, platforms, togglePlatform } = useApp();
+  const { profile, platforms, togglePlatform, syncPlatformsFromRestream, restreamToken } = useApp();
   const { colors: C } = useTheme();
   const styles = useMemo(() => makeStyles(C), [C]);
   const [oauthTarget, setOauthTarget] = useState<PlatformId | null>(null);
   const [oauthVisible, setOauthVisible] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [stats, setStats] = useState({ totalStreams: 0, totalViewers: 0, totalEarnedUsd: 0 });
@@ -188,10 +176,15 @@ export default function ProfileScreen() {
     setOauthVisible(true);
   };
 
-  const handleOAuthSuccess = (id: PlatformId) => {
+  const handleConnectDone = async () => {
     setOauthVisible(false);
     setOauthTarget(null);
-    togglePlatform(id);
+    // Sync channels from Restream after browser closes
+    if (restreamToken) {
+      setSyncing(true);
+      await syncPlatformsFromRestream();
+      setSyncing(false);
+    }
   };
 
   return (
@@ -292,7 +285,17 @@ export default function ProfileScreen() {
       {/* Platform connections */}
       <Animated.View entering={FadeInDown.delay(160).duration(500)} style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Connected accounts</Text>
-        <Text style={styles.sectionSub}>{connectedCount}/5</Text>
+        <TouchableOpacity
+          style={styles.syncBtn}
+          onPress={async () => { setSyncing(true); await syncPlatformsFromRestream(); setSyncing(false); }}
+          activeOpacity={0.7}
+          disabled={syncing || !restreamToken}
+        >
+          {syncing
+            ? <ActivityIndicator size="small" color={C.pink} />
+            : <Ionicons name="refresh-outline" size={16} color={restreamToken ? C.pink : C.textMuted} />
+          }
+        </TouchableOpacity>
       </Animated.View>
 
       <View style={styles.platformGrid}>
@@ -381,10 +384,10 @@ export default function ProfileScreen() {
 
     </ScrollView>
 
-    <OAuthModal
+    <ConnectModal
       platformId={oauthTarget}
       visible={oauthVisible}
-      onSuccess={handleOAuthSuccess}
+      onDone={handleConnectDone}
       onCancel={() => { setOauthVisible(false); setOauthTarget(null); }}
     />
     </>
@@ -419,7 +422,8 @@ function makeStyles(C: AppColors) {
     statValue: { fontFamily: 'Syne-Bold', fontSize: 17, color: C.textPrimary },
     statLabel: { fontFamily: 'DMSans-Regular', fontSize: 11, color: C.textMuted },
     statDivider: { width: 1, height: 32, backgroundColor: C.border, alignSelf: 'center' },
-    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8 },
+    syncBtn: { width: 32, height: 32, borderRadius: 10, backgroundColor: C.bgCard, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
     sectionTitle: { fontFamily: 'Syne-Bold', fontSize: 16, color: C.textPrimary },
     sectionSub: { fontFamily: 'DMSans-Regular', fontSize: 13, color: C.textMuted },
     seeAll: { fontFamily: 'DMSans-Medium', fontSize: 13, color: C.pink },

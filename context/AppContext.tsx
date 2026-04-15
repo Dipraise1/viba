@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { PlatformId } from '@/constants/platforms';
 import { supabase } from '@/lib/supabase';
+import { fetchRestreamChannels, RESTREAM_CHANNEL_MAP } from '@/lib/restream';
 
 export const MIN_VIBA_TO_STREAM = 10; // minimum tokens required to go live
 export const VIBA_EARN_RATE = 1;      // tokens earned per second while live
@@ -84,6 +85,7 @@ interface AppState {
   restreamToken: string;
   setRestreamKey: (key: string) => Promise<void>;
   setRestreamToken: (token: string) => Promise<void>;
+  syncPlatformsFromRestream: () => Promise<void>;
 
   updateProfile: (p: Partial<UserProfile>) => Promise<void>;
   togglePlatform: (id: PlatformId) => void;
@@ -211,7 +213,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .eq('user_id', user.id)
         .eq('platform', 'restream')
         .single();
-      if (tokenRow?.access_token) setRestreamTokenState(tokenRow.access_token);
+      if (tokenRow?.access_token) {
+        setRestreamTokenState(tokenRow.access_token);
+        // Auto-sync connected platforms from Restream
+        const channels = await fetchRestreamChannels(tokenRow.access_token);
+        if (channels.length > 0) {
+          const connectedIds = new Set(
+            channels
+              .filter((ch) => ch.active && RESTREAM_CHANNEL_MAP[ch.channelTypeId])
+              .map((ch) => RESTREAM_CHANNEL_MAP[ch.channelTypeId])
+          );
+          setPlatforms((prev) =>
+            prev.map((p) => ({
+              ...p,
+              connected: connectedIds.has(p.id),
+              username: connectedIds.has(p.id)
+                ? (channels.find((ch) => RESTREAM_CHANNEL_MAP[ch.channelTypeId] === p.id)?.displayName ?? undefined)
+                : undefined,
+            }))
+          );
+        }
+      }
 
       // Load connected platforms
       const { data: platformData } = await supabase
@@ -279,6 +301,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
       platform: 'restream',
       access_token: token,
     });
+    // Immediately sync channels with new token
+    const channels = await fetchRestreamChannels(token);
+    if (channels.length > 0) {
+      const connectedIds = new Set(
+        channels
+          .filter((ch) => ch.active && RESTREAM_CHANNEL_MAP[ch.channelTypeId])
+          .map((ch) => RESTREAM_CHANNEL_MAP[ch.channelTypeId])
+      );
+      setPlatforms((prev) =>
+        prev.map((p) => ({
+          ...p,
+          connected: connectedIds.has(p.id),
+          username: connectedIds.has(p.id)
+            ? (channels.find((ch) => RESTREAM_CHANNEL_MAP[ch.channelTypeId] === p.id)?.displayName ?? undefined)
+            : undefined,
+        }))
+      );
+    }
+  };
+
+  const syncPlatformsFromRestream = async () => {
+    if (!restreamToken) return;
+    const channels = await fetchRestreamChannels(restreamToken);
+    const connectedIds = new Set(
+      channels
+        .filter((ch) => ch.active && RESTREAM_CHANNEL_MAP[ch.channelTypeId])
+        .map((ch) => RESTREAM_CHANNEL_MAP[ch.channelTypeId])
+    );
+    setPlatforms((prev) =>
+      prev.map((p) => ({
+        ...p,
+        connected: connectedIds.has(p.id),
+        username: connectedIds.has(p.id)
+          ? (channels.find((ch) => RESTREAM_CHANNEL_MAP[ch.channelTypeId] === p.id)?.displayName ?? undefined)
+          : undefined,
+      }))
+    );
   };
 
   const togglePlatform = async (id: PlatformId) => {
@@ -334,6 +393,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         restreamToken,
         setRestreamKey,
         setRestreamToken,
+        syncPlatformsFromRestream,
         updateProfile,
         togglePlatform,
         updateStreamSettings: (s) => setStreamSettings((prev) => ({ ...prev, ...s })),
