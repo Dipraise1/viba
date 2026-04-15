@@ -1,11 +1,14 @@
 create table if not exists public.profiles (
-  id           uuid primary key references auth.users(id) on delete cascade,
-  full_name    text,
-  username     text unique,
-  avatar_url   text,
-  push_token   text,
-  viba_balance integer not null default 0,
-  created_at   timestamptz not null default now()
+  id            uuid primary key references auth.users(id) on delete cascade,
+  full_name     text,
+  username      text unique,
+  avatar_url    text,
+  push_token    text,
+  viba_balance  integer not null default 0,
+  bio           text,
+  restream_key  text,
+  updated_at    timestamptz default now(),
+  created_at    timestamptz not null default now()
 );
 
 create or replace function public.handle_new_user()

@@ -8,6 +8,8 @@ import {
   Switch,
   Alert,
   Linking,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -18,6 +20,7 @@ import * as Notifications from 'expo-notifications';
 import { useApp, Quality, Orientation, Camera, CommentVisibility } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
+import { connectRestream } from '@/lib/restream';
 import type { ThemeMode } from '@/constants/themes';
 
 // ─── Permission helpers ────────────────────────────────────────────────────────
@@ -155,11 +158,14 @@ function GroupCard({ children, C }: { children: React.ReactNode; C: ReturnType<t
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
-  const { streamSettings, notifications, privacy, updateStreamSettings, updateNotifications, updatePrivacy } = useApp();
+  const { streamSettings, notifications, privacy, updateStreamSettings, updateNotifications, updatePrivacy, restreamKey, restreamToken, setRestreamKey, setRestreamToken } = useApp();
   const { signOut } = useAuth();
   const { theme, setTheme, colors: C, resolvedTheme } = useTheme();
 
   const [notifPermission, setNotifPermission] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
+  const [restreamKeyInput, setRestreamKeyInput] = useState(restreamKey);
+  const [savingKey, setSavingKey] = useState(false);
+  const [connectingRestream, setConnectingRestream] = useState(false);
 
   useEffect(() => {
     getNotifPermission().then(setNotifPermission);
@@ -198,6 +204,29 @@ export default function SettingsScreen() {
         },
       ]
     );
+  };
+
+  const handleSaveRestreamKey = async () => {
+    if (!restreamKeyInput.trim()) return;
+    setSavingKey(true);
+    await setRestreamKey(restreamKeyInput.trim());
+    setSavingKey(false);
+    Alert.alert('Saved', 'Your Restream stream key has been saved.');
+  };
+
+  const handleConnectRestream = async () => {
+    setConnectingRestream(true);
+    try {
+      const token = await connectRestream();
+      await setRestreamToken(token);
+      Alert.alert('Connected!', 'Restream account connected. You\'ll get real chat and viewer counts while live.');
+    } catch (e: any) {
+      if (e?.message !== 'Restream connection cancelled') {
+        Alert.alert('Connection failed', e?.message ?? 'Could not connect to Restream.');
+      }
+    } finally {
+      setConnectingRestream(false);
+    }
   };
 
   const handleSignOut = () => {
@@ -444,6 +473,72 @@ export default function SettingsScreen() {
         </GroupCard>
       </Animated.View>
 
+      {/* ── Restream ── */}
+      <SectionHeader title="Restream" delay={660} C={C} />
+      <Animated.View entering={FadeInDown.delay(680).duration(400)}>
+        <GroupCard C={C}>
+          {/* Stream key */}
+          <View style={s.restreamRow}>
+            <View style={[s.rowIcon, { backgroundColor: C.bgGlass }]}>
+              <Ionicons name="key-outline" size={16} color={C.textSecondary} />
+            </View>
+            <View style={{ flex: 1, gap: 6 }}>
+              <Text style={[s.rowLabel, { color: C.textPrimary }]}>Stream Key</Text>
+              <Text style={[s.rowSub, { color: C.textMuted }]}>
+                From Restream Dashboard → Stream Setup
+              </Text>
+              <View style={[s.keyInputWrap, { backgroundColor: C.bgGlass, borderColor: C.border }]}>
+                <TextInput
+                  style={[s.keyInput, { color: C.textPrimary }]}
+                  value={restreamKeyInput}
+                  onChangeText={setRestreamKeyInput}
+                  placeholder="re_xxxxxxxxxx_xxxxxxxxxx"
+                  placeholderTextColor={C.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  secureTextEntry
+                />
+              </View>
+              <TouchableOpacity
+                style={[s.saveKeyBtn, { backgroundColor: C.pink, opacity: restreamKeyInput.trim() ? 1 : 0.5 }]}
+                onPress={handleSaveRestreamKey}
+                disabled={!restreamKeyInput.trim() || savingKey}
+                activeOpacity={0.8}
+              >
+                {savingKey
+                  ? <ActivityIndicator size="small" color="#FFFFFF" />
+                  : <Text style={s.saveKeyBtnText}>{restreamKey ? 'Update Key' : 'Save Key'}</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <Divider C={C} />
+
+          {/* Connect Restream account for real chat + viewers */}
+          <TouchableOpacity style={s.row} onPress={handleConnectRestream} activeOpacity={0.7} disabled={connectingRestream}>
+            <View style={[s.rowIcon, { backgroundColor: restreamToken ? 'rgba(0,217,126,0.15)' : C.bgGlass }]}>
+              {connectingRestream
+                ? <ActivityIndicator size="small" color={C.textSecondary} />
+                : <Ionicons name={restreamToken ? 'checkmark-circle' : 'link-outline'} size={16} color={restreamToken ? '#00D97E' : C.textSecondary} />
+              }
+            </View>
+            <View style={s.rowText}>
+              <Text style={[s.rowLabel, { color: C.textPrimary }]}>
+                {restreamToken ? 'Restream Connected' : 'Connect Restream Account'}
+              </Text>
+              <Text style={[s.rowSub, { color: C.textMuted }]}>
+                {restreamToken
+                  ? 'Real chat & viewer counts enabled'
+                  : 'Enables real-time chat and viewer counts while live'
+                }
+              </Text>
+            </View>
+            {!restreamToken && <Ionicons name="chevron-forward" size={14} color={C.textMuted} style={{ marginLeft: 4 }} />}
+          </TouchableOpacity>
+        </GroupCard>
+      </Animated.View>
+
       {/* ── Account ── */}
       <SectionHeader title="Account" delay={700} C={C} />
       <Animated.View entering={FadeInDown.delay(720).duration(400)}>
@@ -570,6 +665,28 @@ const s = StyleSheet.create({
     flex: 1,
     fontFamily: 'DMSans-Medium',
     fontSize: 13,
+  },
+  restreamRow: { flexDirection: 'row', gap: 12, padding: 14, alignItems: 'flex-start' },
+  keyInputWrap: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  keyInput: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 14,
+  },
+  saveKeyBtn: {
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveKeyBtnText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 14,
+    color: '#FFFFFF',
   },
   versionBlock: { alignItems: 'center', paddingTop: 24, paddingBottom: 8, gap: 4 },
   versionText: { fontFamily: 'DMSans-Medium', fontSize: 13 },

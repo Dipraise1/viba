@@ -43,7 +43,7 @@ import { PLATFORMS, PlatformId, getPlatform } from '@/constants/platforms';
 import { useApp, MIN_VIBA_TO_STREAM, VIBA_EARN_RATE } from '@/context/AppContext';
 import { startStreamSession, endStreamSession } from '@/lib/streams';
 import { notifyStreamEnded, notifyViewerMilestone } from '@/lib/notifications';
-import { createMuxStream, endMuxStream, MuxStreamInfo } from '@/lib/mux';
+import { buildRtmpUrl, RestreamChatClient, fetchRestreamViewers } from '@/lib/restream';
 
 const { width, height } = Dimensions.get('window');
 
@@ -1201,12 +1201,14 @@ const endedStyles = StyleSheet.create({
 export default function GoLiveTab() {
   const insets = useSafeAreaInsets();
   const { colors: C } = useTheme();
-  const { platforms, streamSettings, tokenBalance, addTokens, addNotification } = useApp();
+  const { platforms, streamSettings, tokenBalance, addTokens, addNotification, restreamKey, restreamToken } = useApp();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
 
   const cameraRef = useRef<CameraView>(null);
   const nodeCameraRef = useRef<any>(null);
+  const chatClientRef = useRef<RestreamChatClient | null>(null);
+  const viewerPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const connectedPlatforms = platforms.filter((p) => p.connected).map((p) => p.id);
 
   const [facing, setFacing] = useState<CameraType>(streamSettings.camera === 'back' ? 'back' : 'front');
@@ -1219,7 +1221,6 @@ export default function GoLiveTab() {
   const [comments, setComments] = useState<LiveComment[]>([]);
   const commentIndexRef = useRef(0);
   const sessionIdRef = useRef<string | null>(null);
-  const muxInfoRef = useRef<MuxStreamInfo | null>(null);
   const peakViewersRef = useRef(0);
   const milestonesFiredRef = useRef<Set<number>>(new Set());
 
@@ -1259,20 +1260,60 @@ export default function GoLiveTab() {
     return () => clearInterval(timer);
   }, [status]);
 
-  // Fake comment stream
+  // Real chat via Restream WebSocket (falls back to simulated if no token)
   useEffect(() => {
     if (status !== 'live') return;
-    const addComment = () => {
-      const raw = FAKE_COMMENTS[commentIndexRef.current % FAKE_COMMENTS.length];
-      commentIndexRef.current += 1;
-      const comment: LiveComment = { ...raw, id: `${Date.now()}_${Math.random()}` };
-      setComments((prev) => [...prev.slice(-19), comment]);
-    };
-    // First comment quickly, then random intervals
-    const first = setTimeout(addComment, 600);
-    const interval = setInterval(addComment, 1800 + Math.random() * 1400);
-    return () => { clearTimeout(first); clearInterval(interval); };
-  }, [status]);
+
+    if (restreamToken) {
+      // Real chat
+      const client = new RestreamChatClient();
+      chatClientRef.current = client;
+      client.connect(restreamToken, (msg) => {
+        const platform = msg.platform as PlatformId;
+        const comment: LiveComment = {
+          id: msg.id,
+          platform,
+          username: msg.username,
+          text: msg.text,
+          type: msg.type,
+          giftName: msg.giftName,
+          color: msg.type === 'gift' ? '#FFB800' : msg.type === 'follow' ? '#00D97E' : '#FFFFFF',
+        };
+        setComments((prev) => [...prev.slice(-19), comment]);
+      });
+      return () => { client.disconnect(); chatClientRef.current = null; };
+    } else {
+      // Simulated fallback (no Restream token yet)
+      const addComment = () => {
+        const raw = FAKE_COMMENTS[commentIndexRef.current % FAKE_COMMENTS.length];
+        commentIndexRef.current += 1;
+        setComments((prev) => [...prev.slice(-19), { ...raw, id: `${Date.now()}_${Math.random()}` }]);
+      };
+      const first = setTimeout(addComment, 600);
+      const interval = setInterval(addComment, 1800 + Math.random() * 1400);
+      return () => { clearTimeout(first); clearInterval(interval); };
+    }
+  }, [status, restreamToken]);
+
+  // Real viewer count polling (every 15s) — falls back to simulated growth
+  useEffect(() => {
+    if (status !== 'live') return;
+
+    if (restreamToken) {
+      const poll = async () => {
+        const count = await fetchRestreamViewers(restreamToken);
+        if (count > 0) {
+          setViewerCount(count);
+          if (count > peakViewersRef.current) peakViewersRef.current = count;
+        }
+      };
+      poll();
+      viewerPollRef.current = setInterval(poll, 15000);
+      return () => {
+        if (viewerPollRef.current) clearInterval(viewerPollRef.current);
+      };
+    }
+  }, [status, restreamToken]);
 
   const togglePlatform = (id: PlatformId) => {
     Haptics.selectionAsync();
@@ -1304,16 +1345,24 @@ export default function GoLiveTab() {
     milestonesFiredRef.current = new Set();
     setStatus('starting');
 
+    if (!restreamKey) {
+      Alert.alert(
+        'Restream not set up',
+        'Add your Restream stream key in Settings to go live.',
+        [
+          { text: 'Open Settings', onPress: () => router.push('/settings') },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+      return;
+    }
+
     try {
       // 1. Create DB session
       const id = await startStreamSession(streamTitle, Array.from(selectedIds));
       sessionIdRef.current = id;
 
-      // 2. Create Mux live stream and get RTMP credentials
-      const muxInfo = await createMuxStream(id);
-      muxInfoRef.current = muxInfo;
-
-      // 3. Start RTMP publish via NodeMediaClient
+      // 2. Start RTMP publish to Restream
       if (nodeCameraRef.current) {
         nodeCameraRef.current.start();
       }
@@ -1332,15 +1381,12 @@ export default function GoLiveTab() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
 
     // Stop RTMP publish
-    if (nodeCameraRef.current) {
-      nodeCameraRef.current.stop();
-    }
+    if (nodeCameraRef.current) nodeCameraRef.current.stop();
 
-    // Disable Mux stream
-    if (muxInfoRef.current) {
-      await endMuxStream(muxInfoRef.current.mux_stream_id).catch(() => {});
-      muxInfoRef.current = null;
-    }
+    // Disconnect chat
+    chatClientRef.current?.disconnect();
+    chatClientRef.current = null;
+    if (viewerPollRef.current) clearInterval(viewerPollRef.current);
 
     setStatus('stopping');
     if (sessionIdRef.current) {
@@ -1380,10 +1426,7 @@ export default function GoLiveTab() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  // Compute NodeCameraView config from current mux info
-  const rtmpOutputUrl = muxInfoRef.current
-    ? `${muxInfoRef.current.rtmp_url}/${muxInfoRef.current.stream_key}`
-    : '';
+  const rtmpOutputUrl = restreamKey ? buildRtmpUrl(restreamKey) : '';
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>

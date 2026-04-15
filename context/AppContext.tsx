@@ -79,6 +79,11 @@ interface AppState {
   addNotification: (n: Omit<AppNotification, 'id' | 'read' | 'timestamp'>) => void;
   markAllRead: () => void;
   markRead: (id: string) => void;
+  // Restream
+  restreamKey: string;
+  restreamToken: string;
+  setRestreamKey: (key: string) => Promise<void>;
+  setRestreamToken: (token: string) => Promise<void>;
 
   updateProfile: (p: Partial<UserProfile>) => Promise<void>;
   togglePlatform: (id: PlatformId) => void;
@@ -102,6 +107,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     displayName: 'Creator',
     handle: '@creator',
   });
+
+  const [restreamKey, setRestreamKeyState] = useState('');
+  const [restreamToken, setRestreamTokenState] = useState('');
 
   const [platforms, setPlatforms] = useState<ConnectedPlatform[]>(DEFAULT_PLATFORMS);
 
@@ -182,7 +190,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const { data } = await supabase
         .from('profiles')
-        .select('full_name, username, bio, avatar_url')
+        .select('full_name, username, bio, avatar_url, restream_key')
         .eq('id', user.id)
         .single();
 
@@ -193,7 +201,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           bio: data.bio ?? undefined,
           avatarUrl: data.avatar_url ?? undefined,
         });
+        if (data.restream_key) setRestreamKeyState(data.restream_key);
       }
+
+      // Load Restream OAuth token if stored
+      const { data: tokenRow } = await supabase
+        .from('platform_tokens')
+        .select('access_token')
+        .eq('user_id', user.id)
+        .eq('platform', 'restream')
+        .single();
+      if (tokenRow?.access_token) setRestreamTokenState(tokenRow.access_token);
 
       // Load connected platforms
       const { data: platformData } = await supabase
@@ -245,6 +263,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .eq('id', user.id);
   };
 
+  const setRestreamKey = async (key: string) => {
+    setRestreamKeyState(key);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from('profiles').update({ restream_key: key }).eq('id', user.id);
+  };
+
+  const setRestreamToken = async (token: string) => {
+    setRestreamTokenState(token);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from('platform_tokens').upsert({
+      user_id: user.id,
+      platform: 'restream',
+      access_token: token,
+    });
+  };
+
   const togglePlatform = async (id: PlatformId) => {
     const current = platforms.find((p) => p.id === id);
     if (!current) return;
@@ -294,6 +330,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addNotification,
         markAllRead,
         markRead,
+        restreamKey,
+        restreamToken,
+        setRestreamKey,
+        setRestreamToken,
         updateProfile,
         togglePlatform,
         updateStreamSettings: (s) => setStreamSettings((prev) => ({ ...prev, ...s })),
