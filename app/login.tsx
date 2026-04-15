@@ -14,7 +14,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   FadeInDown,
   FadeInUp,
-  ZoomIn,
   useSharedValue,
   useAnimatedStyle,
   withSpring,
@@ -212,23 +211,8 @@ export default function LoginScreen() {
         pointerEvents="none"
       />
 
-      {/* Logo */}
-      <Animated.View entering={ZoomIn.delay(100).duration(600).springify()} style={styles.logoArea}>
-        <LinearGradient
-          colors={['#FF2D87', '#A855F7', '#7B2FFF']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.logoBg}
-        >
-          <Text style={styles.logoText}>V</Text>
-        </LinearGradient>
-        <Animated.Text entering={FadeInDown.delay(300).duration(500)} style={styles.brandName}>
-          viba
-        </Animated.Text>
-        <Animated.Text entering={FadeInDown.delay(420).duration(500)} style={styles.tagline}>
-          Welcome back
-        </Animated.Text>
-      </Animated.View>
+      {/* Logo placeholder */}
+      <View style={styles.logoArea} />
 
       {/* Auth buttons */}
       <Animated.View entering={FadeInUp.delay(500).duration(600)} style={styles.authArea}>
@@ -261,6 +245,10 @@ export default function LoginScreen() {
         >
           <Text style={styles.gradientBtnText}>Sign in with Email</Text>
         </AuthButton>
+
+        <Animated.Text entering={FadeInDown.delay(700).duration(500)} style={styles.tagline}>
+          Welcome back
+        </Animated.Text>
       </Animated.View>
 
       {/* Footer */}
@@ -283,15 +271,6 @@ export default function LoginScreen() {
           <Text style={styles.legalLink}>Privacy Policy</Text>
         </Text>
 
-        {__DEV__ && (
-          <TouchableOpacity
-            onPress={() => router.replace('/(tabs)')}
-            activeOpacity={0.7}
-            style={styles.devSkipBtn}
-          >
-            <Text style={styles.devSkipText}>⚡ Dev: skip login</Text>
-          </TouchableOpacity>
-        )}
       </Animated.View>
     </View>
   );
@@ -309,30 +288,12 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     gap: 10,
   },
-  logoBg: {
-    width: 84,
-    height: 84,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoText: {
-    fontFamily: 'Syne-ExtraBold',
-    fontSize: 48,
-    color: '#FFFFFF',
-    marginTop: -4,
-  },
-  brandName: {
-    fontFamily: 'Syne-ExtraBold',
-    fontSize: 32,
-    color: Colors.textPrimary,
-    letterSpacing: 4,
-  },
   tagline: {
     fontFamily: 'DMSans-Regular',
     fontSize: 16,
     color: Colors.textSecondary,
-    marginTop: 2,
+    textAlign: 'center',
+    marginTop: 8,
   },
   authArea: {
     width: '100%',
@@ -385,19 +346,5 @@ const styles = StyleSheet.create({
   legalLink: {
     color: Colors.textSecondary,
     textDecorationLine: 'underline',
-  },
-  devSkipBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    borderStyle: 'dashed',
-  },
-  devSkipText: {
-    fontFamily: 'DMSans-Medium',
-    fontSize: 12,
-    color: Colors.textMuted,
   },
 });

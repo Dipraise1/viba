@@ -36,7 +36,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors } from '@/constants/colors';
+import { useTheme } from '@/context/ThemeContext';
+import { AppColors } from '@/constants/themes';
 import { PLATFORMS, PlatformId, getPlatform } from '@/constants/platforms';
 import { useApp, MIN_VIBA_TO_STREAM, VIBA_EARN_RATE } from '@/context/AppContext';
 import { startStreamSession, endStreamSession } from '@/lib/streams';
@@ -65,19 +66,19 @@ interface LiveComment {
 
 const FAKE_COMMENTS: Omit<LiveComment, 'id'>[] = [
   { platform: 'tiktok', username: 'jaywave', text: 'yo this is live!!', type: 'comment', color: '#FFFFFF' },
-  { platform: 'instagram', username: 'maya.creates', text: '', type: 'gift', giftName: 'Rose', giftCount: 5, color: Colors.pink },
+  { platform: 'instagram', username: 'maya.creates', text: '', type: 'gift', giftName: 'Rose', giftCount: 5, color: '#FF2D87' },
   { platform: 'youtube', username: 'techvibes99', text: 'what mic are you using?', type: 'comment', color: '#FFFFFF' },
-  { platform: 'twitch', username: 'streamlord', text: '', type: 'gift', giftName: 'Star', giftCount: 100, color: Colors.gold },
-  { platform: 'facebook', username: 'Rachel M', text: '', type: 'follow', color: Colors.success },
+  { platform: 'twitch', username: 'streamlord', text: '', type: 'gift', giftName: 'Star', giftCount: 100, color: '#FFB800' },
+  { platform: 'facebook', username: 'Rachel M', text: '', type: 'follow', color: '#00D97E' },
   { platform: 'tiktok', username: 'noodles_fan', text: 'first time catching you live!', type: 'comment', color: '#FFFFFF' },
   { platform: 'instagram', username: 'dre_art', text: 'the vibe is immaculate', type: 'comment', color: '#FFFFFF' },
-  { platform: 'youtube', username: 'Priya K', text: '', type: 'follow', color: Colors.success },
+  { platform: 'youtube', username: 'Priya K', text: '', type: 'follow', color: '#00D97E' },
   { platform: 'tiktok', username: 'ghostvibes', text: 'energy is everything rn', type: 'comment', color: '#FFFFFF' },
-  { platform: 'twitch', username: 'xXgamer_proXx', text: '', type: 'gift', giftName: 'Rose', giftCount: 3, color: Colors.pink },
+  { platform: 'twitch', username: 'xXgamer_proXx', text: '', type: 'gift', giftName: 'Rose', giftCount: 3, color: '#FF2D87' },
   { platform: 'instagram', username: 'luna_sky', text: 'loving this stream', type: 'comment', color: '#FFFFFF' },
   { platform: 'tiktok', username: 'zack.mp4', text: 'go off bestie', type: 'comment', color: '#FFFFFF' },
   { platform: 'youtube', username: 'CodeWithMe', text: 'subbed!', type: 'comment', color: '#FFFFFF' },
-  { platform: 'twitch', username: 'pixel_rush', text: '', type: 'gift', giftName: 'Star', giftCount: 200, color: Colors.gold },
+  { platform: 'twitch', username: 'pixel_rush', text: '', type: 'gift', giftName: 'Star', giftCount: 200, color: '#FFB800' },
   { platform: 'facebook', username: 'Tom B', text: 'amazing content as always', type: 'comment', color: '#FFFFFF' },
 ];
 
@@ -96,7 +97,7 @@ function PulsingRing({ delay }: { delay: number }) {
     height: 80,
     borderRadius: 40,
     borderWidth: 2,
-    borderColor: Colors.pink,
+    borderColor: '#FF2D87',
     opacity: opacity.value,
     transform: [{ scale: scale.value }],
   }));
@@ -135,7 +136,7 @@ function LiveCommentRow({
       >
         {item.isCreatorReply && (
           <View style={overlayStyles.creatorTag}>
-            <Ionicons name="return-down-forward" size={9} color={Colors.pink} />
+            <Ionicons name="return-down-forward" size={9} color={'#FF2D87'} />
             <Text style={overlayStyles.creatorTagText}>You replied</Text>
           </View>
         )}
@@ -157,7 +158,7 @@ function LiveCommentRow({
         {item.type === 'follow' && (
           <Text style={overlayStyles.text}>
             <Text style={overlayStyles.username}>{item.username} </Text>
-            <Text style={{ color: Colors.success }}>followed you</Text>
+            <Text style={{ color: '#00D97E' }}>followed you</Text>
           </Text>
         )}
         {canReply && !isSelected && (
@@ -207,7 +208,7 @@ const overlayStyles = StyleSheet.create({
   creatorTagText: {
     fontFamily: 'DMSans-Medium',
     fontSize: 10,
-    color: Colors.pink,
+    color: '#FF2D87',
   },
   username: {
     fontFamily: 'DMSans-Bold',
@@ -230,19 +231,19 @@ const overlayStyles = StyleSheet.create({
 
 // ─── Permission screen ─────────────────────────────────────────────────────────
 
-function PermissionScreen({ onRequest }: { onRequest: () => void }) {
+function PermissionScreen({ onRequest, C }: { onRequest: () => void; C: AppColors }) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={[permStyles.container, { paddingTop: insets.top + 20 }]}>
+    <View style={[permStyles.container, { backgroundColor: C.bg, paddingTop: insets.top + 20 }]}>
       <Animated.View entering={ZoomIn.duration(500)} style={permStyles.iconWrap}>
         <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={permStyles.iconCircle} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
           <Ionicons name="camera" size={36} color="#FFFFFF" />
         </LinearGradient>
       </Animated.View>
-      <Animated.Text entering={FadeInDown.delay(200).duration(400)} style={permStyles.title}>
+      <Animated.Text entering={FadeInDown.delay(200).duration(400)} style={[permStyles.title, { color: C.textPrimary }]}>
         Camera access needed
       </Animated.Text>
-      <Animated.Text entering={FadeInDown.delay(300).duration(400)} style={permStyles.sub}>
+      <Animated.Text entering={FadeInDown.delay(300).duration(400)} style={[permStyles.sub, { color: C.textSecondary }]}>
         Viba needs camera and microphone access to broadcast your stream to all platforms.
       </Animated.Text>
       <Animated.View entering={FadeInDown.delay(400).duration(400)}>
@@ -257,11 +258,11 @@ function PermissionScreen({ onRequest }: { onRequest: () => void }) {
 }
 
 const permStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg, alignItems: 'center', paddingHorizontal: 32, gap: 20 },
+  container: { flex: 1, alignItems: 'center', paddingHorizontal: 32, gap: 20 },
   iconWrap: { marginTop: 40, marginBottom: 8 },
   iconCircle: { width: 100, height: 100, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
-  title: { fontFamily: 'Syne-ExtraBold', fontSize: 26, color: Colors.textPrimary, textAlign: 'center' },
-  sub: { fontFamily: 'DMSans-Regular', fontSize: 15, color: Colors.textSecondary, textAlign: 'center', lineHeight: 24 },
+  title: { fontFamily: 'Syne-ExtraBold', fontSize: 26, textAlign: 'center' },
+  sub: { fontFamily: 'DMSans-Regular', fontSize: 15, textAlign: 'center', lineHeight: 24 },
   btn: { borderRadius: 16, overflow: 'hidden', marginTop: 8 },
   btnGrad: { paddingHorizontal: 40, paddingVertical: 16, borderRadius: 16 },
   btnText: { fontFamily: 'Syne-Bold', fontSize: 16, color: '#FFFFFF' },
@@ -304,8 +305,8 @@ function SetupScreen({
 
   return (
     <View style={StyleSheet.absoluteFill}>
-      {/* Camera preview behind */}
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} />
+      {/* Camera preview behind — highest quality */}
+      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} mode="video" videoQuality="2160p" />
 
       {/* Dark gradient overlay */}
       <LinearGradient
@@ -329,7 +330,9 @@ function SetupScreen({
           </TouchableOpacity>
         </View>
         <Text style={setupStyles.readyLabel}>Ready to go live</Text>
-        <View style={{ width: 96 }} />
+        <TouchableOpacity style={setupStyles.iconBtn} onPress={() => router.back()} activeOpacity={0.8}>
+          <Ionicons name="close" size={22} color="#FFFFFF" />
+        </TouchableOpacity>
       </View>
 
       {/* Bottom panel */}
@@ -341,7 +344,7 @@ function SetupScreen({
         <View style={[setupStyles.bottomPanel, { paddingBottom: insets.bottom + 12 }]}>
           {/* Title input */}
           <View style={[setupStyles.titleWrap, titleFocused && setupStyles.titleWrapFocused]}>
-            <Ionicons name="create-outline" size={16} color={titleFocused ? Colors.pink : 'rgba(255,255,255,0.4)'} />
+            <Ionicons name="create-outline" size={16} color={titleFocused ? '#FF2D87' : 'rgba(255,255,255,0.4)'} />
             <TextInput
               value={streamTitle}
               onChangeText={onTitleChange}
@@ -386,17 +389,6 @@ function SetupScreen({
             })}
           </ScrollView>
 
-          {/* Token status */}
-          <View style={setupStyles.tokenRow}>
-            <View style={[setupStyles.tokenPill, canStream ? setupStyles.tokenPillOk : setupStyles.tokenPillWarn]}>
-              <Text style={[setupStyles.tokenPillText, { color: canStream ? Colors.success : Colors.gold }]}>
-                {tokenBalance} $VIBA
-              </Text>
-              <Text style={[setupStyles.tokenPillSub, { color: canStream ? 'rgba(0,217,126,0.6)' : 'rgba(255,184,0,0.6)' }]}>
-                {canStream ? `+${VIBA_EARN_RATE}/sec while live` : `Need ${MIN_VIBA_TO_STREAM} to stream`}
-              </Text>
-            </View>
-          </View>
 
           {/* Go live button */}
           <TouchableOpacity
@@ -405,7 +397,7 @@ function SetupScreen({
             activeOpacity={0.85}
           >
             <LinearGradient
-              colors={selectedIds.size === 0 ? ['#333', '#222'] : ['#FF2D87', '#7B2FFF']}
+              colors={['#FF2D87', '#7B2FFF']}
               style={setupStyles.goLiveBtnGrad}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
@@ -479,7 +471,7 @@ const setupStyles = StyleSheet.create({
     paddingVertical: 12,
   },
   titleWrapFocused: {
-    borderColor: Colors.pink,
+    borderColor: '#FF2D87',
     backgroundColor: 'rgba(255,45,135,0.12)',
   },
   titleInput: {
@@ -517,7 +509,7 @@ const setupStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   goLiveBtn: { borderRadius: 16, overflow: 'hidden' },
-  goLiveBtnDisabled: { opacity: 0.5 },
+  goLiveBtnDisabled: { opacity: 0.38 },
   goLiveBtnGrad: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -655,7 +647,7 @@ function LiveScreen({
 
   return (
     <View style={StyleSheet.absoluteFill}>
-        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} />
+        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} mode="video" videoQuality="2160p" />
 
         {/* Top gradient */}
         <LinearGradient colors={['rgba(0,0,0,0.7)', 'transparent']} style={liveStyles.topGrad} pointerEvents="none" />
@@ -815,7 +807,7 @@ const liveStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: Colors.pink,
+    backgroundColor: '#FF2D87',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 20,
@@ -941,7 +933,7 @@ const liveStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendBtnActive: {
-    backgroundColor: Colors.pink,
+    backgroundColor: '#FF2D87',
   },
   endWrap: {
     position: 'absolute',
@@ -1029,11 +1021,17 @@ function StreamEndedScreen({
   viewerCount,
   selectedIds,
   insets,
+  C,
+  onDone,
+  onStreamAgain,
 }: {
   liveSeconds: number;
   viewerCount: number;
   selectedIds: Set<PlatformId>;
   insets: { top: number; bottom: number };
+  C: AppColors;
+  onDone: () => void;
+  onStreamAgain: () => void;
 }) {
   const formatTime = (s: number) => {
     const h = Math.floor(s / 3600);
@@ -1044,34 +1042,34 @@ function StreamEndedScreen({
   };
 
   return (
-    <View style={[endedStyles.container, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 24 }]}>
+    <View style={[endedStyles.container, { backgroundColor: C.bg, paddingTop: insets.top + 40, paddingBottom: insets.bottom + 24 }]}>
       <Animated.View entering={ZoomIn.duration(400).springify()} style={endedStyles.iconWrap}>
         <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={endedStyles.iconCircle} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
           <Ionicons name="stop-circle" size={40} color="#FFFFFF" />
         </LinearGradient>
       </Animated.View>
 
-      <Animated.Text entering={FadeInDown.delay(150).duration(400)} style={endedStyles.title}>
+      <Animated.Text entering={FadeInDown.delay(150).duration(400)} style={[endedStyles.title, { color: C.textPrimary }]}>
         Stream ended
       </Animated.Text>
-      <Animated.Text entering={FadeInDown.delay(220).duration(400)} style={endedStyles.sub}>
+      <Animated.Text entering={FadeInDown.delay(220).duration(400)} style={[endedStyles.sub, { color: C.textSecondary }]}>
         Great stream! Here's how it went.
       </Animated.Text>
 
-      <Animated.View entering={FadeInDown.delay(300).duration(400)} style={endedStyles.statsRow}>
+      <Animated.View entering={FadeInDown.delay(300).duration(400)} style={[endedStyles.statsRow, { backgroundColor: C.bgCard, borderColor: C.border }]}>
         <View style={endedStyles.statCard}>
-          <Text style={endedStyles.statValue}>{formatTime(liveSeconds)}</Text>
-          <Text style={endedStyles.statLabel}>Duration</Text>
+          <Text style={[endedStyles.statValue, { color: C.textPrimary }]}>{formatTime(liveSeconds)}</Text>
+          <Text style={[endedStyles.statLabel, { color: C.textMuted }]}>Duration</Text>
         </View>
-        <View style={endedStyles.statDivider} />
+        <View style={[endedStyles.statDivider, { backgroundColor: C.border }]} />
         <View style={endedStyles.statCard}>
-          <Text style={endedStyles.statValue}>{viewerCount.toLocaleString()}</Text>
-          <Text style={endedStyles.statLabel}>Peak viewers</Text>
+          <Text style={[endedStyles.statValue, { color: C.textPrimary }]}>{viewerCount.toLocaleString()}</Text>
+          <Text style={[endedStyles.statLabel, { color: C.textMuted }]}>Peak viewers</Text>
         </View>
-        <View style={endedStyles.statDivider} />
+        <View style={[endedStyles.statDivider, { backgroundColor: C.border }]} />
         <View style={endedStyles.statCard}>
-          <Text style={endedStyles.statValue}>{selectedIds.size}</Text>
-          <Text style={endedStyles.statLabel}>Platforms</Text>
+          <Text style={[endedStyles.statValue, { color: C.textPrimary }]}>{selectedIds.size}</Text>
+          <Text style={[endedStyles.statLabel, { color: C.textMuted }]}>Platforms</Text>
         </View>
       </Animated.View>
 
@@ -1086,9 +1084,17 @@ function StreamEndedScreen({
         })}
       </Animated.View>
 
-      <Animated.Text entering={FadeInDown.delay(460).duration(400)} style={endedStyles.returning}>
-        Returning to setup…
-      </Animated.Text>
+      <Animated.View entering={FadeInDown.delay(460).duration(400)} style={endedStyles.btnRow}>
+        <TouchableOpacity style={[endedStyles.btnSecondary, { borderColor: C.border, backgroundColor: C.bgCard }]} onPress={onStreamAgain} activeOpacity={0.8}>
+          <Ionicons name="radio-outline" size={18} color={C.pink} />
+          <Text style={[endedStyles.btnSecondaryText, { color: C.textPrimary }]}>Stream Again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={endedStyles.btnPrimary} onPress={onDone} activeOpacity={0.85}>
+          <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={endedStyles.btnPrimaryGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+            <Text style={endedStyles.btnPrimaryText}>Done</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
     </View>
   );
 }
@@ -1096,7 +1102,6 @@ function StreamEndedScreen({
 const endedStyles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.bg,
     alignItems: 'center',
     paddingHorizontal: 32,
     gap: 16,
@@ -1112,43 +1117,73 @@ const endedStyles = StyleSheet.create({
   title: {
     fontFamily: 'Syne-ExtraBold',
     fontSize: 28,
-    color: Colors.textPrimary,
     textAlign: 'center',
   },
   sub: {
     fontFamily: 'DMSans-Regular',
     fontSize: 15,
-    color: Colors.textSecondary,
     textAlign: 'center',
   },
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgCard,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: Colors.border,
     paddingVertical: 20,
     paddingHorizontal: 24,
     width: '100%',
     marginTop: 8,
   },
   statCard: { flex: 1, alignItems: 'center', gap: 4 },
-  statDivider: { width: 1, height: 36, backgroundColor: Colors.border },
+  statDivider: { width: 1, height: 36 },
   statValue: {
     fontFamily: 'Syne-ExtraBold',
     fontSize: 22,
-    color: Colors.textPrimary,
   },
   statLabel: {
     fontFamily: 'DMSans-Regular',
     fontSize: 12,
-    color: Colors.textMuted,
   },
   platformsRow: {
     flexDirection: 'row',
     gap: 10,
     marginTop: 4,
+  },
+  btnRow: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    marginTop: 8,
+  },
+  btnSecondary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 15,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  btnSecondaryText: {
+    fontFamily: 'Syne-Bold',
+    fontSize: 15,
+  },
+  btnPrimary: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  btnPrimaryGrad: {
+    paddingVertical: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+  },
+  btnPrimaryText: {
+    fontFamily: 'Syne-Bold',
+    fontSize: 15,
+    color: '#FFFFFF',
   },
   platformDot: {
     width: 40,
@@ -1157,18 +1192,13 @@ const endedStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  returning: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 13,
-    color: Colors.textMuted,
-    marginTop: 8,
-  },
 });
 
 // ─── Root component ───────────────────────────────────────────────────────────
 
 export default function GoLiveTab() {
   const insets = useSafeAreaInsets();
+  const { colors: C } = useTheme();
   const { platforms, streamSettings, tokenBalance, addTokens, addNotification } = useApp();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
@@ -1281,7 +1311,6 @@ export default function GoLiveTab() {
   const handleEndStream = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     setStatus('stopping');
-    // Save session end to DB and fire notification
     if (sessionIdRef.current) {
       await endStreamSession(sessionIdRef.current, liveSeconds, peakViewersRef.current);
       sessionIdRef.current = null;
@@ -1292,13 +1321,14 @@ export default function GoLiveTab() {
       title: 'Stream ended',
       body: `You earned ${liveSeconds} $VIBA in ${Math.floor(liveSeconds / 60)}m ${liveSeconds % 60}s with ${peakViewersRef.current.toLocaleString()} peak viewers.`,
     });
-    setTimeout(() => {
-      setStatus('setup');
-      setLiveSeconds(0);
-      setViewerCount(0);
-      setComments([]);
-      commentIndexRef.current = 0;
-    }, 2800);
+  };
+
+  const handleStreamAgain = () => {
+    setStatus('setup');
+    setLiveSeconds(0);
+    setViewerCount(0);
+    setComments([]);
+    commentIndexRef.current = 0;
   };
 
   // ── Permissions ──────────────────────────────────────────────────────────────
@@ -1309,11 +1339,11 @@ export default function GoLiveTab() {
   };
 
   if (!cameraPermission || !micPermission) {
-    return <View style={{ flex: 1, backgroundColor: Colors.bg }} />;
+    return <View style={{ flex: 1, backgroundColor: C.bg }} />;
   }
 
   if (!cameraPermission.granted || !micPermission.granted) {
-    return <PermissionScreen onRequest={requestPermissions} />;
+    return <PermissionScreen onRequest={requestPermissions} C={C} />;
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -1347,6 +1377,9 @@ export default function GoLiveTab() {
           viewerCount={viewerCount}
           selectedIds={selectedIds}
           insets={insets}
+          C={C}
+          onDone={() => router.back()}
+          onStreamAgain={handleStreamAgain}
         />
       )}
 

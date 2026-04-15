@@ -59,6 +59,7 @@ export interface UserProfile {
   displayName: string;
   handle: string;
   bio?: string;
+  avatarUrl?: string;
 }
 
 interface AppState {
@@ -79,7 +80,7 @@ interface AppState {
   markAllRead: () => void;
   markRead: (id: string) => void;
 
-  updateProfile: (p: Partial<UserProfile>) => void;
+  updateProfile: (p: Partial<UserProfile>) => Promise<void>;
   togglePlatform: (id: PlatformId) => void;
   updateStreamSettings: (s: Partial<StreamSettings>) => void;
   updateNotifications: (n: Partial<NotificationSettings>) => void;
@@ -181,15 +182,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const { data } = await supabase
         .from('profiles')
-        .select('display_name, handle, bio')
+        .select('full_name, username, bio, avatar_url')
         .eq('id', user.id)
         .single();
 
       if (data) {
         setProfile({
-          displayName: data.display_name,
-          handle: data.handle,
+          displayName: data.full_name ?? 'Creator',
+          handle: data.username ? `@${data.username}` : '@creator',
           bio: data.bio ?? undefined,
+          avatarUrl: data.avatar_url ?? undefined,
         });
       }
 
@@ -234,9 +236,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await supabase
       .from('profiles')
       .update({
-        ...(p.displayName && { display_name: p.displayName }),
-        ...(p.handle && { handle: p.handle }),
+        ...(p.displayName && { full_name: p.displayName }),
+        ...(p.handle && { username: p.handle.replace('@', '') }),
         ...(p.bio !== undefined && { bio: p.bio }),
+        ...(p.avatarUrl !== undefined && { avatar_url: p.avatarUrl }),
         updated_at: new Date().toISOString(),
       })
       .eq('id', user.id);

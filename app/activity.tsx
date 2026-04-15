@@ -10,6 +10,7 @@ import {
   Platform,
   Dimensions,
 } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeInDown,
@@ -157,7 +158,10 @@ export default function CommentsScreen() {
     >
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <View>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
+          <Ionicons name="arrow-back" size={20} color={Colors.textPrimary} />
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Activity</Text>
           <Text style={styles.headerSub}>Unified feed · all platforms</Text>
         </View>
@@ -303,22 +307,36 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bg,
   },
   header: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 12,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-end',
+    gap: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: Colors.bgCard,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  headerCenter: {
+    flex: 1,
+  },
   headerTitle: {
     fontFamily: 'Syne-ExtraBold',
-    fontSize: 28,
+    fontSize: 24,
     color: Colors.textPrimary,
   },
   headerSub: {
     fontFamily: 'DMSans-Regular',
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.textMuted,
     marginTop: 2,
   },

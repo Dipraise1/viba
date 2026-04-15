@@ -81,15 +81,18 @@ function AnimatedBell() {
     ],
   }));
 
-  const makePulseStyle = (sv: typeof pulse1) =>
-    useAnimatedStyle(() => ({
-      opacity: interpolate(sv.value, [0, 0.5, 1], [0.4, 0.15, 0]),
-      transform: [{ scale: interpolate(sv.value, [0, 1], [1, 2.2]) }],
-    }));
-
-  const p1Style = makePulseStyle(pulse1);
-  const p2Style = makePulseStyle(pulse2);
-  const p3Style = makePulseStyle(pulse3);
+  const p1Style = useAnimatedStyle(() => ({
+    opacity: interpolate(pulse1.value, [0, 0.5, 1], [0.4, 0.15, 0]),
+    transform: [{ scale: interpolate(pulse1.value, [0, 1], [1, 2.2]) }],
+  }));
+  const p2Style = useAnimatedStyle(() => ({
+    opacity: interpolate(pulse2.value, [0, 0.5, 1], [0.4, 0.15, 0]),
+    transform: [{ scale: interpolate(pulse2.value, [0, 1], [1, 2.2]) }],
+  }));
+  const p3Style = useAnimatedStyle(() => ({
+    opacity: interpolate(pulse3.value, [0, 0.5, 1], [0.4, 0.15, 0]),
+    transform: [{ scale: interpolate(pulse3.value, [0, 1], [1, 2.2]) }],
+  }));
 
   return (
     <View style={bellStyles.container}>

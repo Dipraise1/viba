@@ -9,6 +9,8 @@ import {
   Platform,
   ScrollView,
   Alert,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -16,8 +18,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '@/constants/colors';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 function InputField({
   label,
@@ -62,22 +67,73 @@ function InputField({
 export default function EditProfileScreen() {
   const insets = useSafeAreaInsets();
   const { profile, updateProfile } = useApp();
+  const { user } = useAuth();
 
   const [displayName, setDisplayName] = useState(profile.displayName);
   const [handle, setHandle] = useState(profile.handle.replace('@', ''));
-  const [bio, setBio] = useState('Multi-platform live streamer');
+  const [bio, setBio] = useState(profile.bio ?? '');
+  const [avatarUri, setAvatarUri] = useState<string | null>(profile.avatarUrl ?? null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = () => {
+  const handlePickAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Allow photo access to change your avatar.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+    setAvatarUri(asset.uri);
+    if (!user) return;
+
+    setUploadingAvatar(true);
+    try {
+      const ext = asset.uri.split('.').pop() ?? 'jpg';
+      const path = `${user.id}/avatar.${ext}`;
+      const response = await fetch(asset.uri);
+      const blob = await response.blob();
+      const { error } = await supabase.storage
+        .from('avatars')
+        .upload(path, blob, { upsert: true, contentType: `image/${ext}` });
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
+      setAvatarUri(publicUrl);
+    } catch (e: any) {
+      Alert.alert('Upload failed', e?.message ?? 'Could not upload photo.');
+      setAvatarUri(profile.avatarUrl ?? null);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleSave = async () => {
     if (!displayName.trim()) {
       Alert.alert('Name required', 'Please enter a display name.');
       return;
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    updateProfile({
-      displayName: displayName.trim(),
-      handle: `@${handle.trim().toLowerCase().replace(/\s/g, '_')}`,
-    });
-    router.back();
+    setSaving(true);
+    try {
+      await updateProfile({
+        displayName: displayName.trim(),
+        handle: `@${handle.trim().toLowerCase().replace(/\s/g, '_')}`,
+        bio: bio.trim(),
+        ...(avatarUri ? { avatarUrl: avatarUri } : {}),
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.back();
+    } catch (e: any) {
+      Alert.alert('Save failed', e?.message ?? 'Something went wrong.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -97,27 +153,34 @@ export default function EditProfileScreen() {
           </TouchableOpacity>
           <Text style={styles.screenTitle}>Edit Profile</Text>
           <TouchableOpacity style={styles.saveBtn} onPress={handleSave} activeOpacity={0.8}>
-            <Text style={styles.saveBtnText}>Save</Text>
+            {saving ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.saveBtnText}>Save</Text>}
           </TouchableOpacity>
         </Animated.View>
 
         {/* Avatar */}
         <Animated.View entering={FadeInDown.delay(80).duration(400)} style={styles.avatarSection}>
-          <View style={styles.avatarWrap}>
-            <LinearGradient
-              colors={['#FF2D87', '#7B2FFF']}
-              style={styles.avatar}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <Text style={styles.avatarInitial}>
-                {displayName.charAt(0).toUpperCase() || 'C'}
-              </Text>
-            </LinearGradient>
+          <TouchableOpacity style={styles.avatarWrap} onPress={handlePickAvatar} activeOpacity={0.8} disabled={uploadingAvatar}>
+            {avatarUri ? (
+              <Image source={{ uri: avatarUri }} style={styles.avatar} />
+            ) : (
+              <LinearGradient
+                colors={['#FF2D87', '#7B2FFF']}
+                style={styles.avatar}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={styles.avatarInitial}>
+                  {displayName.charAt(0).toUpperCase() || 'C'}
+                </Text>
+              </LinearGradient>
+            )}
             <View style={styles.avatarEditBadge}>
-              <Ionicons name="camera" size={12} color="#FFFFFF" />
+              {uploadingAvatar
+                ? <ActivityIndicator size="small" color="#FFFFFF" />
+                : <Ionicons name="camera" size={12} color="#FFFFFF" />
+              }
             </View>
-          </View>
+          </TouchableOpacity>
           <Text style={styles.avatarHint}>Tap to change photo</Text>
         </Animated.View>
 
@@ -213,6 +276,7 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   avatarInitial: {
     fontFamily: 'Syne-ExtraBold',

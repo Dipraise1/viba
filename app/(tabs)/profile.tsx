@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown, FadeInUp, ZoomIn } from 'react-native-reanimated';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors } from '@/constants/colors';
+import { useTheme } from '@/context/ThemeContext';
+import type { AppColors } from '@/constants/themes';
 import { getPlatform, PlatformId } from '@/constants/platforms';
 import { useApp } from '@/context/AppContext';
 import { pickAndUploadAvatar } from '@/lib/avatar';
@@ -38,6 +39,8 @@ function OAuthModal({
 }) {
   const [stage, setStage] = useState<OAuthStage>('confirm');
   const platform = platformId ? getPlatform(platformId) : null;
+  const { colors: C } = useTheme();
+  const oauthStyles = useMemo(() => makeOAuthStyles(C), [C]);
 
   const handleAuthorize = () => {
     if (!platformId || !platform) return;
@@ -110,30 +113,34 @@ function OAuthModal({
   );
 }
 
-const oauthStyles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
-  sheet: { backgroundColor: '#13131F', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 24, paddingBottom: 44, alignItems: 'center', gap: 14, borderTopWidth: 1, borderColor: Colors.border },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: Colors.border, marginTop: 12, marginBottom: 4 },
-  brandIcon: { width: 68, height: 68, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
-  title: { fontFamily: 'Syne-ExtraBold', fontSize: 20, color: Colors.textPrimary, textAlign: 'center' },
-  sub: { fontFamily: 'DMSans-Regular', fontSize: 13, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
-  permList: { width: '100%', gap: 10, backgroundColor: Colors.bgCard, borderRadius: 14, borderWidth: 1, borderColor: Colors.border, padding: 14 },
-  permRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  permDot: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  permText: { fontFamily: 'DMSans-Regular', fontSize: 13, color: Colors.textSecondary, flex: 1 },
-  actions: { flexDirection: 'row', gap: 10, width: '100%', marginTop: 4 },
-  cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 13, alignItems: 'center', backgroundColor: Colors.bgCard, borderWidth: 1, borderColor: Colors.border },
-  cancelText: { fontFamily: 'DMSans-Medium', fontSize: 14, color: Colors.textSecondary },
-  authBtn: { flex: 2, borderRadius: 13, overflow: 'hidden' },
-  authBtnGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 13 },
-  authBtnText: { fontFamily: 'DMSans-Bold', fontSize: 14, color: '#FFFFFF' },
-  center: { alignItems: 'center', paddingVertical: 20, gap: 12, width: '100%' },
-  successCircle: { width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center' },
-});
+function makeOAuthStyles(C: AppColors) {
+  return StyleSheet.create({
+    backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
+    sheet: { backgroundColor: C.bgDeep, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 24, paddingBottom: 44, alignItems: 'center', gap: 14, borderTopWidth: 1, borderColor: C.border },
+    handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: C.border, marginTop: 12, marginBottom: 4 },
+    brandIcon: { width: 68, height: 68, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+    title: { fontFamily: 'Syne-ExtraBold', fontSize: 20, color: C.textPrimary, textAlign: 'center' },
+    sub: { fontFamily: 'DMSans-Regular', fontSize: 13, color: C.textSecondary, textAlign: 'center', lineHeight: 20 },
+    permList: { width: '100%', gap: 10, backgroundColor: C.bgCard, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 14 },
+    permRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    permDot: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+    permText: { fontFamily: 'DMSans-Regular', fontSize: 13, color: C.textSecondary, flex: 1 },
+    actions: { flexDirection: 'row', gap: 10, width: '100%', marginTop: 4 },
+    cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 13, alignItems: 'center', backgroundColor: C.bgCard, borderWidth: 1, borderColor: C.border },
+    cancelText: { fontFamily: 'DMSans-Medium', fontSize: 14, color: C.textSecondary },
+    authBtn: { flex: 2, borderRadius: 13, overflow: 'hidden' },
+    authBtnGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 13 },
+    authBtnText: { fontFamily: 'DMSans-Bold', fontSize: 14, color: '#FFFFFF' },
+    center: { alignItems: 'center', paddingVertical: 20, gap: 12, width: '100%' },
+    successCircle: { width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center' },
+  });
+}
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { profile, platforms, togglePlatform } = useApp();
+  const { colors: C } = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const [oauthTarget, setOauthTarget] = useState<PlatformId | null>(null);
   const [oauthVisible, setOauthVisible] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
@@ -145,7 +152,7 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     fetchStreamStats().then(setStats);
-    fetchRecentStreams(3).then(setRecentStreams);
+    fetchRecentStreams(2).then(setRecentStreams);
   }, []);
 
   const handleAvatarPress = async () => {
@@ -191,7 +198,7 @@ export default function ProfileScreen() {
     <>
     <ScrollView
       style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: 32 }]}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: 110 }]}
       showsVerticalScrollIndicator={false}
     >
       {/* Header */}
@@ -202,7 +209,7 @@ export default function ProfileScreen() {
           activeOpacity={0.7}
           onPress={() => router.push('/settings')}
         >
-          <Ionicons name="settings-outline" size={20} color={Colors.textSecondary} />
+          <Ionicons name="settings-outline" size={20} color={C.textSecondary} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -210,7 +217,7 @@ export default function ProfileScreen() {
       <Animated.View entering={FadeInDown.delay(80).duration(500)}>
         <View style={styles.profileCard}>
           <LinearGradient
-            colors={['rgba(255,45,135,0.08)', 'rgba(123,47,255,0.08)']}
+            colors={['rgba(255,45,135,0.14)', 'rgba(123,47,255,0.14)']}
             style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
           />
           <View style={styles.profileTop}>
@@ -252,7 +259,7 @@ export default function ProfileScreen() {
               onPress={() => router.push('/edit-profile')}
               activeOpacity={0.7}
             >
-              <Ionicons name="pencil-outline" size={15} color={Colors.textSecondary} />
+              <Ionicons name="pencil-outline" size={15} color={C.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -273,7 +280,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.statDivider} />
             <View style={styles.stat}>
-              <Text style={[styles.statValue, { color: Colors.gold }]}>
+              <Text style={[styles.statValue, { color: C.gold }]}>
                 ${stats.totalEarnedUsd.toFixed(0)}
               </Text>
               <Text style={styles.statLabel}>Earned</Text>
@@ -288,43 +295,34 @@ export default function ProfileScreen() {
         <Text style={styles.sectionSub}>{connectedCount}/5</Text>
       </Animated.View>
 
-      <View style={styles.platformList}>
+      <View style={styles.platformGrid}>
         {platforms.map((p, index) => {
           const platform = getPlatform(p.id);
           return (
             <Animated.View
               key={p.id}
-              entering={FadeInDown.delay(200 + index * 50).duration(400)}
+              entering={FadeInDown.delay(200 + index * 40).duration(400)}
+              style={styles.platformCell}
             >
-              <View style={[styles.platformRow, p.connected && styles.platformRowActive]}>
-                <View style={[styles.platformIcon, { backgroundColor: platform.gradient[0] }]}>
-                  <FontAwesome5 name={platform.icon} size={15} color="#FFFFFF" solid />
+              <TouchableOpacity
+                style={[styles.platformCellInner, p.connected && styles.platformCellActive]}
+                onPress={() => p.connected ? handleDisconnect(p.id, platform.name) : handleConnect(p.id)}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.platformCellIcon, { backgroundColor: platform.gradient[0] as string }]}>
+                  <FontAwesome5 name={platform.icon} size={13} color="#FFFFFF" solid />
                 </View>
-                <View style={styles.platformInfo}>
-                  <Text style={styles.platformName}>{platform.name}</Text>
-                  <Text style={[styles.platformSub, p.connected && styles.platformSubActive]}>
-                    {p.connected ? p.username : 'Not connected'}
+                <View style={styles.platformCellMeta}>
+                  <Text style={styles.platformCellName} numberOfLines={1}>{platform.name}</Text>
+                  <Text style={[styles.platformCellStatus, p.connected && { color: C.success }]} numberOfLines={1}>
+                    {p.connected ? (p.username ?? 'Connected') : 'Tap to add'}
                   </Text>
                 </View>
-                {p.connected ? (
-                  <TouchableOpacity
-                    style={styles.disconnectBtn}
-                    onPress={() => handleDisconnect(p.id, platform.name)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.disconnectText}>Disconnect</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.connectBtn}
-                    onPress={() => handleConnect(p.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="add" size={14} color="#FFFFFF" />
-                    <Text style={styles.connectText}>Connect</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+                {p.connected
+                  ? <View style={styles.connectedCheck}><Ionicons name="checkmark" size={10} color={C.success} /></View>
+                  : <Ionicons name="add-circle-outline" size={16} color={C.textMuted} />
+                }
+              </TouchableOpacity>
             </Animated.View>
           );
         })}
@@ -333,7 +331,7 @@ export default function ProfileScreen() {
       {/* Stream history preview */}
       <Animated.View entering={FadeInDown.delay(520).duration(500)} style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Recent streams</Text>
-        <TouchableOpacity activeOpacity={0.7}>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/streams')}>
           <Text style={styles.seeAll}>See all</Text>
         </TouchableOpacity>
       </Animated.View>
@@ -341,7 +339,7 @@ export default function ProfileScreen() {
       <View style={styles.historyList}>
         {recentStreams.length === 0 ? (
           <View style={styles.emptyHistory}>
-            <Ionicons name="radio-outline" size={28} color={Colors.textMuted} />
+            <Ionicons name="radio-outline" size={28} color={C.textMuted} />
             <Text style={styles.emptyHistoryText}>No streams yet. Go live to see your history here.</Text>
           </View>
         ) : (
@@ -368,7 +366,7 @@ export default function ProfileScreen() {
                       <Text style={styles.historyMetaText}>{durLabel}</Text>
                     </>}
                     <Text style={styles.historyMetaDot}>·</Text>
-                    <Ionicons name="eye-outline" size={11} color={Colors.textMuted} />
+                    <Ionicons name="eye-outline" size={11} color={C.textMuted} />
                     <Text style={styles.historyMetaText}>{s.peak_viewers.toLocaleString()}</Text>
                   </View>
                 </View>
@@ -381,18 +379,6 @@ export default function ProfileScreen() {
         )}
       </View>
 
-      {/* Settings shortcut */}
-      <Animated.View entering={FadeInDown.delay(740).duration(400)}>
-        <TouchableOpacity
-          style={styles.settingsShortcut}
-          activeOpacity={0.7}
-          onPress={() => router.push('/settings')}
-        >
-          <Ionicons name="settings-outline" size={16} color={Colors.textMuted} />
-          <Text style={styles.settingsShortcutText}>App Settings</Text>
-          <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
-        </TouchableOpacity>
-      </Animated.View>
     </ScrollView>
 
     <OAuthModal
@@ -405,308 +391,57 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  content: { paddingHorizontal: 20, gap: 12 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerTitle: {
-    fontFamily: 'Syne-ExtraBold',
-    fontSize: 28,
-    color: Colors.textPrimary,
-  },
-  settingsBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: Colors.bgCard,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 20,
-    overflow: 'hidden',
-    gap: 16,
-  },
-  profileTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 14,
-  },
-  avatarWrap: {
-    position: 'relative',
-  },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarImg: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-  },
-  avatarOverlay: {
-    position: 'absolute',
-    inset: 0,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarEditBadge: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: Colors.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: Colors.bg,
-  },
-  avatarInitial: {
-    fontFamily: 'Syne-ExtraBold',
-    fontSize: 26,
-    color: '#FFFFFF',
-  },
-  onlineBadge: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: Colors.success,
-    borderWidth: 2,
-    borderColor: Colors.bg,
-  },
-  profileMeta: {
-    flex: 1,
-    gap: 3,
-  },
-  profileName: {
-    fontFamily: 'Syne-Bold',
-    fontSize: 20,
-    color: Colors.textPrimary,
-  },
-  profileHandle: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 13,
-    color: Colors.textMuted,
-  },
-  connectedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 4,
-  },
-  connectedDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.success,
-  },
-  connectedText: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 12,
-    color: Colors.success,
-  },
-  editBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: Colors.bgGlass,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    paddingTop: 14,
-  },
-  stat: { flex: 1, alignItems: 'center', gap: 2 },
-  statValue: {
-    fontFamily: 'Syne-Bold',
-    fontSize: 17,
-    color: Colors.textPrimary,
-  },
-  statLabel: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 11,
-    color: Colors.textMuted,
-  },
-  statDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: Colors.border,
-    alignSelf: 'center',
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  sectionTitle: {
-    fontFamily: 'Syne-Bold',
-    fontSize: 16,
-    color: Colors.textPrimary,
-  },
-  sectionSub: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 13,
-    color: Colors.textMuted,
-  },
-  seeAll: {
-    fontFamily: 'DMSans-Medium',
-    fontSize: 13,
-    color: Colors.pink,
-  },
-  platformList: { gap: 8 },
-  platformRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 14,
-    gap: 12,
-  },
-  platformRowActive: {
-    borderColor: 'rgba(0, 217, 126, 0.2)',
-    backgroundColor: 'rgba(0, 217, 126, 0.04)',
-  },
-  platformIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  platformInfo: { flex: 1, gap: 2 },
-  platformName: {
-    fontFamily: 'DMSans-Bold',
-    fontSize: 14,
-    color: Colors.textPrimary,
-  },
-  platformSub: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-  platformSubActive: { color: Colors.success },
-  connectBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.pink,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
-  },
-  connectText: {
-    fontFamily: 'DMSans-Bold',
-    fontSize: 13,
-    color: '#FFFFFF',
-  },
-  disconnectBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  disconnectText: {
-    fontFamily: 'DMSans-Medium',
-    fontSize: 13,
-    color: Colors.textMuted,
-  },
-  historyList: { gap: 0 },
-  emptyHistory: {
-    alignItems: 'center',
-    paddingVertical: 28,
-    gap: 10,
-  },
-  emptyHistoryText: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 13,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  historyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  historyDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.border,
-  },
-  historyInfo: { flex: 1, gap: 3 },
-  historyTitle: {
-    fontFamily: 'DMSans-Medium',
-    fontSize: 14,
-    color: Colors.textPrimary,
-  },
-  historyMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  historyMetaText: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-  historyMetaDot: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-  historyGifts: {
-    fontFamily: 'Syne-Bold',
-    fontSize: 14,
-    color: Colors.gold,
-  },
-  settingsShortcut: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginTop: 8,
-  },
-  settingsShortcutText: {
-    flex: 1,
-    fontFamily: 'DMSans-Regular',
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-});
+function makeStyles(C: AppColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: C.bg },
+    content: { paddingHorizontal: 20, gap: 12 },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    headerTitle: { fontFamily: 'Syne-ExtraBold', fontSize: 28, color: C.textPrimary },
+    settingsBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: C.bgCard, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+    profileCard: { borderRadius: 20, borderWidth: 1, borderColor: C.border, padding: 20, overflow: 'hidden', gap: 16 },
+    profileTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+    avatarWrap: { position: 'relative' },
+    avatar: { width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+    avatarImg: { width: 64, height: 64, borderRadius: 20 },
+    avatarOverlay: { position: 'absolute', inset: 0, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+    avatarEditBadge: { position: 'absolute', bottom: -4, right: -4, width: 20, height: 20, borderRadius: 10, backgroundColor: C.pink, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: C.bg },
+    avatarInitial: { fontFamily: 'Syne-ExtraBold', fontSize: 26, color: '#FFFFFF' },
+    onlineBadge: { position: 'absolute', bottom: 2, right: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: C.success, borderWidth: 2, borderColor: C.bg },
+    profileMeta: { flex: 1, gap: 3 },
+    profileName: { fontFamily: 'Syne-Bold', fontSize: 20, color: C.textPrimary },
+    profileHandle: { fontFamily: 'DMSans-Regular', fontSize: 13, color: C.textMuted },
+    connectedBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
+    connectedDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.success },
+    connectedText: { fontFamily: 'DMSans-Regular', fontSize: 12, color: C.success },
+    editBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.bgGlass, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+    statsRow: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: C.border, paddingTop: 14 },
+    stat: { flex: 1, alignItems: 'center', gap: 2 },
+    statValue: { fontFamily: 'Syne-Bold', fontSize: 17, color: C.textPrimary },
+    statLabel: { fontFamily: 'DMSans-Regular', fontSize: 11, color: C.textMuted },
+    statDivider: { width: 1, height: 32, backgroundColor: C.border, alignSelf: 'center' },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+    sectionTitle: { fontFamily: 'Syne-Bold', fontSize: 16, color: C.textPrimary },
+    sectionSub: { fontFamily: 'DMSans-Regular', fontSize: 13, color: C.textMuted },
+    seeAll: { fontFamily: 'DMSans-Medium', fontSize: 13, color: C.pink },
+    platformGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    platformCell: { width: '48%' },
+    platformCellInner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.bgCard, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 12 },
+    platformCellActive: { borderColor: C.success + '40', backgroundColor: C.successDim },
+    platformCellIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+    platformCellMeta: { flex: 1, gap: 1 },
+    platformCellName: { fontFamily: 'DMSans-Bold', fontSize: 12, color: C.textPrimary },
+    platformCellStatus: { fontFamily: 'DMSans-Regular', fontSize: 11, color: C.textMuted },
+    connectedCheck: { width: 18, height: 18, borderRadius: 9, backgroundColor: C.successDim, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+    historyList: { gap: 0 },
+    emptyHistory: { alignItems: 'center', paddingVertical: 28, gap: 10 },
+    emptyHistoryText: { fontFamily: 'DMSans-Regular', fontSize: 13, color: C.textMuted, textAlign: 'center', lineHeight: 20 },
+    historyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: C.border },
+    historyDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.border },
+    historyInfo: { flex: 1, gap: 3 },
+    historyTitle: { fontFamily: 'DMSans-Medium', fontSize: 14, color: C.textPrimary },
+    historyMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    historyMetaText: { fontFamily: 'DMSans-Regular', fontSize: 12, color: C.textMuted },
+    historyMetaDot: { fontFamily: 'DMSans-Regular', fontSize: 12, color: C.textMuted },
+    historyGifts: { fontFamily: 'Syne-Bold', fontSize: 14, color: C.gold },
+  });
+}

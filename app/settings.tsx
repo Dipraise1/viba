@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,22 +7,36 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
-  Platform,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors } from '@/constants/colors';
+import * as Notifications from 'expo-notifications';
 import { useApp, Quality, Orientation, Camera, CommentVisibility } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
+import type { ThemeMode } from '@/constants/themes';
 
-// ─── Reusable row components ───────────────────────────────────────────────
+// ─── Permission helpers ────────────────────────────────────────────────────────
 
-function SectionHeader({ title, delay = 0 }: { title: string; delay?: number }) {
+async function getNotifPermission(): Promise<'granted' | 'denied' | 'undetermined'> {
+  const { status } = await Notifications.getPermissionsAsync();
+  return status as 'granted' | 'denied' | 'undetermined';
+}
+
+async function requestNotifPermission(): Promise<boolean> {
+  const { status } = await Notifications.requestPermissionsAsync();
+  return status === 'granted';
+}
+
+// ─── Reusable row components ───────────────────────────────────────────────────
+
+function SectionHeader({ title, delay = 0, C }: { title: string; delay?: number; C: ReturnType<typeof useTheme>['colors'] }) {
   return (
-    <Animated.Text entering={FadeInDown.delay(delay).duration(400)} style={styles.sectionHeader}>
+    <Animated.Text entering={FadeInDown.delay(delay).duration(400)} style={[s.sectionHeader, { color: C.textMuted }]}>
       {title}
     </Animated.Text>
   );
@@ -34,28 +48,30 @@ function SettingToggle({
   sub,
   value,
   onChange,
+  C,
 }: {
   icon: string;
   label: string;
   sub?: string;
   value: boolean;
   onChange: (v: boolean) => void;
+  C: ReturnType<typeof useTheme>['colors'];
 }) {
   return (
-    <View style={styles.row}>
-      <View style={styles.rowIcon}>
-        <Ionicons name={icon as any} size={16} color={Colors.textSecondary} />
+    <View style={[s.row, { borderColor: C.border }]}>
+      <View style={[s.rowIcon, { backgroundColor: C.bgGlass }]}>
+        <Ionicons name={icon as any} size={16} color={C.textSecondary} />
       </View>
-      <View style={styles.rowText}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        {sub && <Text style={styles.rowSub}>{sub}</Text>}
+      <View style={s.rowText}>
+        <Text style={[s.rowLabel, { color: C.textPrimary }]}>{label}</Text>
+        {sub && <Text style={[s.rowSub, { color: C.textMuted }]}>{sub}</Text>}
       </View>
       <Switch
         value={value}
         onValueChange={(v) => { Haptics.selectionAsync(); onChange(v); }}
-        trackColor={{ false: Colors.bgGlass, true: Colors.pink }}
+        trackColor={{ false: C.bgGlass, true: C.pink }}
         thumbColor="#FFFFFF"
-        ios_backgroundColor={Colors.bgGlass}
+        ios_backgroundColor={C.bgGlass}
       />
     </View>
   );
@@ -68,6 +84,7 @@ function SettingLink({
   value,
   onPress,
   danger,
+  C,
 }: {
   icon: string;
   label: string;
@@ -75,24 +92,19 @@ function SettingLink({
   value?: string;
   onPress: () => void;
   danger?: boolean;
+  C: ReturnType<typeof useTheme>['colors'];
 }) {
   return (
-    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
-      <View style={[styles.rowIcon, danger && styles.rowIconDanger]}>
-        <Ionicons
-          name={icon as any}
-          size={16}
-          color={danger ? '#FF4444' : Colors.textSecondary}
-        />
+    <TouchableOpacity style={s.row} onPress={onPress} activeOpacity={0.7}>
+      <View style={[s.rowIcon, danger ? s.rowIconDanger : { backgroundColor: C.bgGlass }]}>
+        <Ionicons name={icon as any} size={16} color={danger ? '#FF4444' : C.textSecondary} />
       </View>
-      <View style={styles.rowText}>
-        <Text style={[styles.rowLabel, danger && styles.rowLabelDanger]}>{label}</Text>
-        {sub && <Text style={styles.rowSub}>{sub}</Text>}
+      <View style={s.rowText}>
+        <Text style={[s.rowLabel, danger && s.rowLabelDanger, !danger && { color: C.textPrimary }]}>{label}</Text>
+        {sub && <Text style={[s.rowSub, { color: C.textMuted }]}>{sub}</Text>}
       </View>
-      {value && <Text style={styles.rowValue}>{value}</Text>}
-      {!danger && (
-        <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} style={{ marginLeft: 4 }} />
-      )}
+      {value && <Text style={[s.rowValue, { color: C.textMuted }]}>{value}</Text>}
+      {!danger && <Ionicons name="chevron-forward" size={14} color={C.textMuted} style={{ marginLeft: 4 }} />}
     </TouchableOpacity>
   );
 }
@@ -102,24 +114,26 @@ function SegmentControl<T extends string>({
   value,
   onChange,
   label,
+  C,
 }: {
   options: { id: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
   label: string;
+  C: ReturnType<typeof useTheme>['colors'];
 }) {
   return (
-    <View style={styles.segmentRow}>
-      <Text style={styles.segmentLabel}>{label}</Text>
-      <View style={styles.segmentGroup}>
+    <View style={s.segmentRow}>
+      <Text style={[s.segmentLabel, { color: C.textPrimary }]}>{label}</Text>
+      <View style={[s.segmentGroup, { backgroundColor: C.bgGlass }]}>
         {options.map((opt) => (
           <TouchableOpacity
             key={opt.id}
-            style={[styles.segmentOption, value === opt.id && styles.segmentOptionActive]}
+            style={[s.segmentOption, value === opt.id && { backgroundColor: C.pink }]}
             onPress={() => { Haptics.selectionAsync(); onChange(opt.id); }}
             activeOpacity={0.7}
           >
-            <Text style={[styles.segmentText, value === opt.id && styles.segmentTextActive]}>
+            <Text style={[s.segmentText, { color: value === opt.id ? '#FFFFFF' : C.textMuted }]}>
               {opt.label}
             </Text>
           </TouchableOpacity>
@@ -129,20 +143,47 @@ function SegmentControl<T extends string>({
   );
 }
 
-function Divider() {
-  return <View style={styles.divider} />;
+function Divider({ C }: { C: ReturnType<typeof useTheme>['colors'] }) {
+  return <View style={[s.divider, { backgroundColor: C.border }]} />;
 }
 
-function GroupCard({ children }: { children: React.ReactNode }) {
-  return <View style={styles.groupCard}>{children}</View>;
+function GroupCard({ children, C }: { children: React.ReactNode; C: ReturnType<typeof useTheme>['colors'] }) {
+  return <View style={[s.groupCard, { backgroundColor: C.bgCard, borderColor: C.border }]}>{children}</View>;
 }
 
-// ─── Main screen ──────────────────────────────────────────────────────────
+// ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { streamSettings, notifications, privacy, updateStreamSettings, updateNotifications, updatePrivacy } = useApp();
   const { signOut } = useAuth();
+  const { theme, setTheme, colors: C, resolvedTheme } = useTheme();
+
+  const [notifPermission, setNotifPermission] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
+
+  useEffect(() => {
+    getNotifPermission().then(setNotifPermission);
+  }, []);
+
+  // When any notification toggle is turned on, ensure we have permission first
+  const handleNotifToggle = async (key: keyof typeof notifications, value: boolean) => {
+    if (value && notifPermission !== 'granted') {
+      const granted = await requestNotifPermission();
+      setNotifPermission(granted ? 'granted' : 'denied');
+      if (!granted) {
+        Alert.alert(
+          'Notifications blocked',
+          'To receive alerts, enable notifications for Viba in your device Settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]
+        );
+        return; // Don't save the toggle if permission denied
+      }
+    }
+    updateNotifications({ [key]: value });
+  };
 
   const handleDeleteAccount = () => {
     Alert.alert(
@@ -153,9 +194,7 @@ export default function SettingsScreen() {
         {
           text: 'Delete Account',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert('Request submitted', 'Your data deletion request has been sent. Your account will be removed within 30 days.');
-          },
+          onPress: () => Alert.alert('Request submitted', 'Your data deletion request has been sent. Your account will be removed within 30 days.'),
         },
       ]
     );
@@ -164,73 +203,131 @@ export default function SettingsScreen() {
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Sign out of Viba?', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          await signOut();
-          // AuthGate in _layout.tsx handles the redirect to login
-        },
-      },
+      { text: 'Sign Out', style: 'destructive', onPress: async () => { await signOut(); } },
     ]);
   };
 
+  const themeOptions: { id: ThemeMode; label: string }[] = [
+    { id: 'dark', label: 'Dark' },
+    { id: 'light', label: 'Light' },
+    { id: 'system', label: 'Auto' },
+  ];
+
   return (
     <ScrollView
-      style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 4, paddingBottom: 48 }]}
+      style={[s.container, { backgroundColor: C.bg }]}
+      contentContainerStyle={[s.content, { paddingTop: insets.top + 4, paddingBottom: 48 }]}
       showsVerticalScrollIndicator={false}
     >
       {/* Back header */}
-      <Animated.View entering={FadeInDown.delay(0).duration(400)} style={styles.navHeader}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={20} color={Colors.textPrimary} />
+      <Animated.View entering={FadeInDown.delay(0).duration(400)} style={s.navHeader}>
+        <TouchableOpacity style={[s.backBtn, { backgroundColor: C.bgCard, borderColor: C.border }]} onPress={() => router.back()} activeOpacity={0.7}>
+          <Ionicons name="arrow-back" size={20} color={C.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.screenTitle}>Settings</Text>
+        <Text style={[s.screenTitle, { color: C.textPrimary }]}>Settings</Text>
         <View style={{ width: 40 }} />
       </Animated.View>
 
+      {/* ── Appearance ── */}
+      <SectionHeader title="Appearance" delay={40} C={C} />
+      <Animated.View entering={FadeInDown.delay(60).duration(400)}>
+        <GroupCard C={C}>
+          <View style={s.segmentRow}>
+            <View style={s.themeIconRow}>
+              <Ionicons
+                name={resolvedTheme === 'light' ? 'sunny-outline' : 'moon-outline'}
+                size={16}
+                color={C.textSecondary}
+              />
+              <Text style={[s.segmentLabel, { color: C.textPrimary }]}>Theme</Text>
+            </View>
+            <View style={[s.segmentGroup, { backgroundColor: C.bgGlass }]}>
+              {themeOptions.map((opt) => (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={[s.segmentOption, theme === opt.id && { backgroundColor: C.pink }]}
+                  onPress={() => { Haptics.selectionAsync(); setTheme(opt.id); }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[s.segmentText, { color: theme === opt.id ? '#FFFFFF' : C.textMuted }]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          <Divider C={C} />
+          <SettingLink
+            icon="text-outline"
+            label="Comment text size"
+            value="Medium"
+            onPress={() => {}}
+            C={C}
+          />
+        </GroupCard>
+      </Animated.View>
+
       {/* ── Notifications ── */}
-      <SectionHeader title="Notifications" delay={60} />
-      <Animated.View entering={FadeInDown.delay(80).duration(400)}>
-        <GroupCard>
+      <SectionHeader title="Notifications" delay={120} C={C} />
+
+      {/* Permission banner */}
+      {notifPermission === 'denied' && (
+        <Animated.View entering={FadeInDown.delay(130).duration(400)}>
+          <TouchableOpacity
+            style={[s.permBanner, { backgroundColor: 'rgba(255,184,0,0.12)', borderColor: 'rgba(255,184,0,0.30)' }]}
+            onPress={() => Linking.openSettings()}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="warning-outline" size={16} color={C.gold} />
+            <Text style={[s.permBannerText, { color: C.gold }]}>Notifications are blocked — tap to open Settings</Text>
+            <Ionicons name="chevron-forward" size={13} color={C.gold} />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      <Animated.View entering={FadeInDown.delay(140).duration(400)}>
+        <GroupCard C={C}>
           <SettingToggle
             icon="chatbubble-outline"
             label="New comments"
             sub="Get notified when viewers comment"
             value={notifications.comments}
-            onChange={(v) => updateNotifications({ comments: v })}
+            onChange={(v) => handleNotifToggle('comments', v)}
+            C={C}
           />
-          <Divider />
+          <Divider C={C} />
           <SettingToggle
             icon="gift-outline"
             label="Gifts received"
             sub="Roses, Stars, Bits and more"
             value={notifications.gifts}
-            onChange={(v) => updateNotifications({ gifts: v })}
+            onChange={(v) => handleNotifToggle('gifts', v)}
+            C={C}
           />
-          <Divider />
+          <Divider C={C} />
           <SettingToggle
             icon="person-add-outline"
             label="New followers"
             value={notifications.followers}
-            onChange={(v) => updateNotifications({ followers: v })}
+            onChange={(v) => handleNotifToggle('followers', v)}
+            C={C}
           />
-          <Divider />
+          <Divider C={C} />
           <SettingToggle
             icon="trending-up-outline"
             label="Viewer milestones"
             sub="100, 500, 1K+ viewers"
             value={notifications.viewerMilestones}
-            onChange={(v) => updateNotifications({ viewerMilestones: v })}
+            onChange={(v) => handleNotifToggle('viewerMilestones', v)}
+            C={C}
           />
         </GroupCard>
       </Animated.View>
 
       {/* ── Stream Settings ── */}
-      <SectionHeader title="Stream" delay={160} />
-      <Animated.View entering={FadeInDown.delay(180).duration(400)}>
-        <GroupCard>
+      <SectionHeader title="Stream" delay={240} C={C} />
+      <Animated.View entering={FadeInDown.delay(260).duration(400)}>
+        <GroupCard C={C}>
           <SegmentControl<Quality>
             label="Video quality"
             options={[
@@ -240,8 +337,9 @@ export default function SettingsScreen() {
             ]}
             value={streamSettings.quality}
             onChange={(v) => updateStreamSettings({ quality: v })}
+            C={C}
           />
-          <Divider />
+          <Divider C={C} />
           <SegmentControl<Orientation>
             label="Orientation"
             options={[
@@ -250,8 +348,9 @@ export default function SettingsScreen() {
             ]}
             value={streamSettings.orientation}
             onChange={(v) => updateStreamSettings({ orientation: v })}
+            C={C}
           />
-          <Divider />
+          <Divider C={C} />
           <SegmentControl<Camera>
             label="Default camera"
             options={[
@@ -260,30 +359,33 @@ export default function SettingsScreen() {
             ]}
             value={streamSettings.camera}
             onChange={(v) => updateStreamSettings({ camera: v })}
+            C={C}
           />
-          <Divider />
+          <Divider C={C} />
           <SettingToggle
             icon="mic-outline"
             label="Microphone"
             sub="Enable mic on stream start"
             value={streamSettings.micEnabled}
             onChange={(v) => updateStreamSettings({ micEnabled: v })}
+            C={C}
           />
-          <Divider />
+          <Divider C={C} />
           <SettingToggle
             icon="save-outline"
             label="Auto-record streams"
             sub="Save all streams to your library"
             value={streamSettings.autoRecord}
             onChange={(v) => updateStreamSettings({ autoRecord: v })}
+            C={C}
           />
         </GroupCard>
       </Animated.View>
 
       {/* ── Privacy ── */}
-      <SectionHeader title="Privacy" delay={300} />
-      <Animated.View entering={FadeInDown.delay(320).duration(400)}>
-        <GroupCard>
+      <SectionHeader title="Privacy" delay={380} C={C} />
+      <Animated.View entering={FadeInDown.delay(400).duration(400)}>
+        <GroupCard C={C}>
           <SegmentControl<CommentVisibility>
             label="Who can comment"
             options={[
@@ -293,139 +395,84 @@ export default function SettingsScreen() {
             ]}
             value={privacy.commentVisibility}
             onChange={(v) => updatePrivacy({ commentVisibility: v })}
+            C={C}
           />
-          <Divider />
+          <Divider C={C} />
           <SettingToggle
             icon="gift-outline"
             label="Show gifts publicly"
             sub="Gifts appear in your comment feed"
             value={privacy.showGiftsPublicly}
             onChange={(v) => updatePrivacy({ showGiftsPublicly: v })}
+            C={C}
           />
-          <Divider />
+          <Divider C={C} />
           <SettingToggle
             icon="eye-outline"
             label="Show viewer count"
             sub="Visible to all platforms"
             value={privacy.showViewerCount}
             onChange={(v) => updatePrivacy({ showViewerCount: v })}
-          />
-        </GroupCard>
-      </Animated.View>
-
-      {/* ── Appearance ── */}
-      <SectionHeader title="Appearance" delay={420} />
-      <Animated.View entering={FadeInDown.delay(440).duration(400)}>
-        <GroupCard>
-          <SettingLink
-            icon="moon-outline"
-            label="Theme"
-            value="Dark"
-            onPress={() => {}}
-          />
-          <Divider />
-          <SettingLink
-            icon="text-outline"
-            label="Comment text size"
-            value="Medium"
-            onPress={() => {}}
+            C={C}
           />
         </GroupCard>
       </Animated.View>
 
       {/* ── Support ── */}
-      <SectionHeader title="Support" delay={520} />
-      <Animated.View entering={FadeInDown.delay(540).duration(400)}>
-        <GroupCard>
-          <SettingLink
-            icon="help-circle-outline"
-            label="Help Center"
-            sub="FAQs, guides, contact"
-            onPress={() => {}}
-          />
-          <Divider />
-          <SettingLink
-            icon="bug-outline"
-            label="Report a bug"
-            onPress={() => {}}
-          />
-          <Divider />
-          <SettingLink
-            icon="star-outline"
-            label="Rate Viba"
-            onPress={() => {}}
-          />
-          <Divider />
-          <SettingLink
-            icon="share-social-outline"
-            label="Share with friends"
-            onPress={() => {}}
-          />
+      <SectionHeader title="Support" delay={500} C={C} />
+      <Animated.View entering={FadeInDown.delay(520).duration(400)}>
+        <GroupCard C={C}>
+          <SettingLink icon="help-circle-outline" label="Help Center" sub="FAQs, guides, contact" onPress={() => {}} C={C} />
+          <Divider C={C} />
+          <SettingLink icon="bug-outline" label="Report a bug" onPress={() => {}} C={C} />
+          <Divider C={C} />
+          <SettingLink icon="star-outline" label="Rate Viba" onPress={() => {}} C={C} />
+          <Divider C={C} />
+          <SettingLink icon="share-social-outline" label="Share with friends" onPress={() => {}} C={C} />
         </GroupCard>
       </Animated.View>
 
       {/* ── Legal ── */}
-      <SectionHeader title="Legal" delay={620} />
-      <Animated.View entering={FadeInDown.delay(640).duration(400)}>
-        <GroupCard>
-          <SettingLink
-            icon="shield-checkmark-outline"
-            label="Privacy Policy"
-            onPress={() => {}}
-          />
-          <Divider />
-          <SettingLink
-            icon="document-text-outline"
-            label="Terms of Service"
-            onPress={() => {}}
-          />
-          <Divider />
-          <SettingLink
-            icon="code-slash-outline"
-            label="Open Source Licenses"
-            onPress={() => {}}
-          />
+      <SectionHeader title="Legal" delay={600} C={C} />
+      <Animated.View entering={FadeInDown.delay(620).duration(400)}>
+        <GroupCard C={C}>
+          <SettingLink icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => {}} C={C} />
+          <Divider C={C} />
+          <SettingLink icon="document-text-outline" label="Terms of Service" onPress={() => {}} C={C} />
+          <Divider C={C} />
+          <SettingLink icon="code-slash-outline" label="Open Source Licenses" onPress={() => {}} C={C} />
         </GroupCard>
       </Animated.View>
 
-      {/* ── Danger zone ── */}
-      <SectionHeader title="Account" delay={720} />
-      <Animated.View entering={FadeInDown.delay(740).duration(400)}>
-        <GroupCard>
-          <SettingLink
-            icon="log-out-outline"
-            label="Sign Out"
-            onPress={handleSignOut}
-          />
-          <Divider />
+      {/* ── Account ── */}
+      <SectionHeader title="Account" delay={700} C={C} />
+      <Animated.View entering={FadeInDown.delay(720).duration(400)}>
+        <GroupCard C={C}>
+          <SettingLink icon="log-out-outline" label="Sign Out" onPress={handleSignOut} C={C} />
+          <Divider C={C} />
           <SettingLink
             icon="trash-outline"
             label="Delete Account"
             sub="Permanently remove all your data"
             onPress={handleDeleteAccount}
             danger
+            C={C}
           />
         </GroupCard>
       </Animated.View>
 
       {/* Version */}
-      <Animated.View entering={FadeInDown.delay(800).duration(400)} style={styles.versionBlock}>
-        <Text style={styles.versionText}>Viba · Version 1.0.0</Text>
-        <Text style={styles.versionSub}>Made for creators, by creators.</Text>
+      <Animated.View entering={FadeInDown.delay(780).duration(400)} style={s.versionBlock}>
+        <Text style={[s.versionText, { color: C.textMuted }]}>Viba · Version 1.0.0</Text>
+        <Text style={[s.versionSub, { color: C.textMuted }]}>Made for creators, by creators.</Text>
       </Animated.View>
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  content: {
-    paddingHorizontal: 20,
-    gap: 6,
-  },
+const s = StyleSheet.create({
+  container: { flex: 1 },
+  content: { paddingHorizontal: 20, gap: 6 },
   navHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -437,21 +484,17 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: Colors.bgCard,
     borderWidth: 1,
-    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   screenTitle: {
     fontFamily: 'Syne-Bold',
     fontSize: 18,
-    color: Colors.textPrimary,
   },
   sectionHeader: {
     fontFamily: 'DMSans-Medium',
     fontSize: 11,
-    color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
     marginTop: 20,
@@ -459,15 +502,12 @@ const styles = StyleSheet.create({
     paddingLeft: 4,
   },
   groupCard: {
-    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.border,
     overflow: 'hidden',
   },
   divider: {
     height: 1,
-    backgroundColor: Colors.border,
     marginLeft: 52,
   },
   row: {
@@ -481,48 +521,30 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 9,
-    backgroundColor: Colors.bgGlass,
     alignItems: 'center',
     justifyContent: 'center',
   },
   rowIconDanger: {
     backgroundColor: 'rgba(255,68,68,0.12)',
   },
-  rowText: {
-    flex: 1,
-    gap: 1,
-  },
-  rowLabel: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 15,
-    color: Colors.textPrimary,
-  },
-  rowLabelDanger: {
-    color: '#FF4444',
-  },
-  rowSub: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-  rowValue: {
-    fontFamily: 'DMSans-Medium',
-    fontSize: 13,
-    color: Colors.textMuted,
+  rowText: { flex: 1, gap: 1 },
+  rowLabel: { fontFamily: 'DMSans-Regular', fontSize: 15 },
+  rowLabelDanger: { color: '#FF4444' },
+  rowSub: { fontFamily: 'DMSans-Regular', fontSize: 12 },
+  rowValue: { fontFamily: 'DMSans-Medium', fontSize: 13 },
+  themeIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   segmentRow: {
     paddingHorizontal: 14,
     paddingVertical: 12,
     gap: 10,
   },
-  segmentLabel: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 15,
-    color: Colors.textPrimary,
-  },
+  segmentLabel: { fontFamily: 'DMSans-Regular', fontSize: 15 },
   segmentGroup: {
     flexDirection: 'row',
-    backgroundColor: Colors.bgGlass,
     borderRadius: 10,
     padding: 3,
     gap: 2,
@@ -533,32 +555,23 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
-  segmentOptionActive: {
-    backgroundColor: Colors.pink,
-  },
-  segmentText: {
-    fontFamily: 'DMSans-Medium',
-    fontSize: 13,
-    color: Colors.textMuted,
-  },
-  segmentTextActive: {
-    color: '#FFFFFF',
-  },
-  versionBlock: {
+  segmentText: { fontFamily: 'DMSans-Medium', fontSize: 13 },
+  permBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 24,
-    paddingBottom: 8,
-    gap: 4,
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    marginBottom: 6,
   },
-  versionText: {
+  permBannerText: {
+    flex: 1,
     fontFamily: 'DMSans-Medium',
     fontSize: 13,
-    color: Colors.textMuted,
   },
-  versionSub: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 12,
-    color: Colors.textMuted,
-    opacity: 0.6,
-  },
+  versionBlock: { alignItems: 'center', paddingTop: 24, paddingBottom: 8, gap: 4 },
+  versionText: { fontFamily: 'DMSans-Medium', fontSize: 13 },
+  versionSub: { fontFamily: 'DMSans-Regular', fontSize: 12, opacity: 0.6 },
 });

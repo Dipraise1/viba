@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import { Session, User } from '@supabase/supabase-js';
 import * as WebBrowser from 'expo-web-browser';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { makeRedirectUri } from 'expo-auth-session';
+import * as Linking from 'expo-linking';
 import { supabase } from '@/lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithGoogle = async () => {
-    const redirectUri = makeRedirectUri({ scheme: 'viba', path: 'auth/callback' });
+    const redirectUri = Linking.createURL('auth/callback');
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -51,12 +51,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (error || !data.url) throw error ?? new Error('No OAuth URL returned');
 
-    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUri);
+    const callbackScheme = redirectUri.startsWith('exp://') ? 'exp://' : 'viba://';
+    const result = await WebBrowser.openAuthSessionAsync(data.url, callbackScheme);
+    console.log('[Auth] OAuth result:', JSON.stringify(result));
 
     if (result.type === 'success') {
       const { url } = result;
-      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(url);
-      if (exchangeError) throw exchangeError;
+      const hash = url.split('#')[1] ?? url.split('?')[1] ?? '';
+      const params = Object.fromEntries(new URLSearchParams(hash));
+      const accessToken = params.access_token;
+      const refreshToken = params.refresh_token;
+
+      if (accessToken) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken ?? '',
+        });
+        if (sessionError) throw sessionError;
+      } else {
+        console.error('[Auth] No access_token in callback URL:', url);
+        throw new Error('Sign in failed. Please try again.');
+      }
+    } else if (result.type === 'cancel') {
+      throw new Error('User cancelled');
     }
   };
 
