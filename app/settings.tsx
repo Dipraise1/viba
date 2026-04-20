@@ -17,6 +17,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useApp, Quality, Orientation, Camera, CommentVisibility } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -158,7 +159,7 @@ function GroupCard({ children, C }: { children: React.ReactNode; C: ReturnType<t
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
-  const { streamSettings, notifications, privacy, updateStreamSettings, updateNotifications, updatePrivacy, restreamKey, restreamToken, setRestreamKey, setRestreamToken } = useApp();
+  const { streamSettings, notifications, privacy, updateStreamSettings, updateNotifications, updatePrivacy, restreamKey, restreamToken, setRestreamKey, setRestreamToken, platformStreamKeys, setPlatformStreamKey } = useApp();
   const { signOut } = useAuth();
   const { theme, setTheme, colors: C, resolvedTheme } = useTheme();
 
@@ -166,6 +167,8 @@ export default function SettingsScreen() {
   const [restreamKeyInput, setRestreamKeyInput] = useState(restreamKey);
   const [savingKey, setSavingKey] = useState(false);
   const [connectingRestream, setConnectingRestream] = useState(false);
+  const [platformKeyInputs, setPlatformKeyInputs] = useState<Record<string, string>>(platformStreamKeys);
+  const [savingPlatformKey, setSavingPlatformKey] = useState<string | null>(null);
 
   useEffect(() => {
     getNotifPermission().then(setNotifPermission);
@@ -206,6 +209,12 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleSavePlatformKey = async (platform: string) => {
+    setSavingPlatformKey(platform);
+    await setPlatformStreamKey(platform, platformKeyInputs[platform]?.trim() ?? '');
+    setSavingPlatformKey(null);
+  };
+
   const handleSaveRestreamKey = async () => {
     if (!restreamKeyInput.trim()) return;
     setSavingKey(true);
@@ -232,7 +241,14 @@ export default function SettingsScreen() {
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Sign out of Viba?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: async () => { await signOut(); } },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut();
+          router.replace('/login');
+        },
+      },
     ]);
   };
 
@@ -473,19 +489,29 @@ export default function SettingsScreen() {
         </GroupCard>
       </Animated.View>
 
-      {/* ── Restream ── */}
-      <SectionHeader title="Restream" delay={660} C={C} />
-      <Animated.View entering={FadeInDown.delay(680).duration(400)}>
+      {/* ── Streaming ── */}
+      <SectionHeader title="Streaming" delay={660} C={C} />
+
+      {/* Option A — Restream (multi-platform) */}
+      <Animated.View entering={FadeInDown.delay(670).duration(400)}>
+        <View style={[s.streamOptionHeader, { borderColor: C.border }]}>
+          <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={s.streamOptionBadge} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+            <Text style={s.streamOptionBadgeText}>RECOMMENDED</Text>
+          </LinearGradient>
+          <Text style={[s.streamOptionTitle, { color: C.textPrimary }]}>Restream</Text>
+          <Text style={[s.streamOptionSub, { color: C.textMuted }]}>
+            Stream to all platforms at once. Free for up to 2 platforms.
+          </Text>
+        </View>
         <GroupCard C={C}>
-          {/* Stream key */}
           <View style={s.restreamRow}>
             <View style={[s.rowIcon, { backgroundColor: C.bgGlass }]}>
               <Ionicons name="key-outline" size={16} color={C.textSecondary} />
             </View>
             <View style={{ flex: 1, gap: 6 }}>
-              <Text style={[s.rowLabel, { color: C.textPrimary }]}>Stream Key</Text>
+              <Text style={[s.rowLabel, { color: C.textPrimary }]}>Restream Stream Key</Text>
               <Text style={[s.rowSub, { color: C.textMuted }]}>
-                From Restream Dashboard → Stream Setup
+                restream.io → Dashboard → Stream Setup
               </Text>
               <View style={[s.keyInputWrap, { backgroundColor: C.bgGlass, borderColor: C.border }]}>
                 <TextInput
@@ -512,10 +538,7 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-
           <Divider C={C} />
-
-          {/* Connect Restream account for real chat + viewers */}
           <TouchableOpacity style={s.row} onPress={handleConnectRestream} activeOpacity={0.7} disabled={connectingRestream}>
             <View style={[s.rowIcon, { backgroundColor: restreamToken ? 'rgba(0,217,126,0.15)' : C.bgGlass }]}>
               {connectingRestream
@@ -528,14 +551,66 @@ export default function SettingsScreen() {
                 {restreamToken ? 'Restream Connected' : 'Connect Restream Account'}
               </Text>
               <Text style={[s.rowSub, { color: C.textMuted }]}>
-                {restreamToken
-                  ? 'Real chat & viewer counts enabled'
-                  : 'Enables real-time chat and viewer counts while live'
-                }
+                {restreamToken ? 'Real chat & viewer counts enabled' : 'Enables live chat + viewer counts'}
               </Text>
             </View>
             {!restreamToken && <Ionicons name="chevron-forward" size={14} color={C.textMuted} style={{ marginLeft: 4 }} />}
           </TouchableOpacity>
+        </GroupCard>
+      </Animated.View>
+
+      {/* Option B — Individual platform keys */}
+      <Animated.View entering={FadeInDown.delay(700).duration(400)}>
+        <View style={[s.streamOptionHeader, { borderColor: C.border, marginTop: 4 }]}>
+          <Text style={[s.streamOptionTitle, { color: C.textPrimary }]}>Individual Keys</Text>
+          <Text style={[s.streamOptionSub, { color: C.textMuted }]}>
+            Stream to one platform at a time using your own stream key.
+          </Text>
+        </View>
+        <GroupCard C={C}>
+          {[
+            { id: 'youtube',  label: 'YouTube',  placeholder: 'xxxx-xxxx-xxxx-xxxx-xxxx', hint: 'YouTube Studio → Go Live → Stream key' },
+            { id: 'twitch',   label: 'Twitch',   placeholder: 'live_XXXXXXXXXX',           hint: 'Twitch Dashboard → Settings → Stream' },
+            { id: 'facebook', label: 'Facebook', placeholder: 'FB-XXXXXXXXXXXX-XXXX',      hint: 'Facebook → Live Producer → Stream key' },
+          ].map((p, i) => (
+            <React.Fragment key={p.id}>
+              {i > 0 && <Divider C={C} />}
+              <View style={s.restreamRow}>
+                <View style={[s.rowIcon, { backgroundColor: C.bgGlass }]}>
+                  <Ionicons name="key-outline" size={16} color={platformStreamKeys[p.id] ? '#00D97E' : C.textSecondary} />
+                </View>
+                <View style={{ flex: 1, gap: 6 }}>
+                  <Text style={[s.rowLabel, { color: C.textPrimary }]}>{p.label}</Text>
+                  <Text style={[s.rowSub, { color: C.textMuted }]}>{p.hint}</Text>
+                  <View style={[s.keyInputWrap, { backgroundColor: C.bgGlass, borderColor: platformStreamKeys[p.id] ? '#00D97E40' : C.border }]}>
+                    <TextInput
+                      style={[s.keyInput, { color: C.textPrimary }]}
+                      value={platformKeyInputs[p.id] ?? ''}
+                      onChangeText={(v) => setPlatformKeyInputs((prev) => ({ ...prev, [p.id]: v }))}
+                      placeholder={p.placeholder}
+                      placeholderTextColor={C.textMuted}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      secureTextEntry
+                    />
+                  </View>
+                  <TouchableOpacity
+                    style={[s.saveKeyBtn, { backgroundColor: C.bgCard, borderWidth: 1, borderColor: C.border, opacity: (platformKeyInputs[p.id] ?? '').trim() ? 1 : 0.5 }]}
+                    onPress={() => handleSavePlatformKey(p.id)}
+                    disabled={!(platformKeyInputs[p.id] ?? '').trim() || savingPlatformKey === p.id}
+                    activeOpacity={0.8}
+                  >
+                    {savingPlatformKey === p.id
+                      ? <ActivityIndicator size="small" color={C.textPrimary} />
+                      : <Text style={[s.saveKeyBtnText, { color: platformStreamKeys[p.id] ? '#00D97E' : C.textPrimary }]}>
+                          {platformStreamKeys[p.id] ? 'Update' : 'Save'}
+                        </Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </React.Fragment>
+          ))}
         </GroupCard>
       </Animated.View>
 

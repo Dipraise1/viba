@@ -160,7 +160,6 @@ function ThemedApp() {
           <Stack.Screen name="index" />
           <Stack.Screen name="login" />
           <Stack.Screen name="onboarding" />
-          <Stack.Screen name="onboarding/profile" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="edit-profile" options={{ animation: 'slide_from_right' }} />
