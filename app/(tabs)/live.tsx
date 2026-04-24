@@ -16,7 +16,6 @@ import {
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
-import { NodeCameraView } from 'react-native-nodemediaclient';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   useSharedValue,
@@ -43,7 +42,7 @@ import { PLATFORMS, PlatformId, getPlatform } from '@/constants/platforms';
 import { useApp, MIN_VIBA_TO_STREAM, VIBA_EARN_RATE } from '@/context/AppContext';
 import { startStreamSession, endStreamSession } from '@/lib/streams';
 import { notifyStreamEnded, notifyViewerMilestone } from '@/lib/notifications';
-import { buildRtmpUrl, RestreamChatClient, fetchRestreamViewers } from '@/lib/restream';
+import { RestreamChatClient, fetchRestreamViewers } from '@/lib/restream';
 
 const { width, height } = Dimensions.get('window');
 
@@ -1268,12 +1267,12 @@ const endedStyles = StyleSheet.create({
 export default function GoLiveTab() {
   const insets = useSafeAreaInsets();
   const { colors: C } = useTheme();
-  const { platforms, streamSettings, tokenBalance, addTokens, addNotification, restreamKey, restreamToken, platformStreamKeys, syncTokenBalance } = useApp();
+  const { platforms, streamSettings, tokenBalance, addTokens, addNotification, restreamToken, syncTokenBalance } = useApp();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
 
   const cameraRef = useRef<CameraView>(null);
-  const nodeCameraRef = useRef<any>(null);
+
   const chatClientRef = useRef<RestreamChatClient | null>(null);
   const viewerPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const connectedPlatforms = platforms.filter((p) => p.connected).map((p) => p.id);
@@ -1290,16 +1289,13 @@ export default function GoLiveTab() {
   const sessionIdRef = useRef<string | null>(null);
   const peakViewersRef = useRef(0);
   const milestonesFiredRef = useRef<Set<number>>(new Set());
-  const shouldStartRtmpRef = useRef(false);
-  const [activeRtmpUrl, setActiveRtmpUrl] = useState('');
 
-  // Start RTMP once NodeCameraView has mounted (status flips to 'starting')
   useEffect(() => {
-    if (status === 'starting' && shouldStartRtmpRef.current) {
-      // Give NodeCameraView one frame to mount before calling start()
+    if (status === 'starting') {
       const t = setTimeout(() => {
-        nodeCameraRef.current?.start();
-      }, 300);
+        setStatus('live');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }, 1500);
       return () => clearTimeout(t);
     }
   }, [status]);
@@ -1420,38 +1416,6 @@ export default function GoLiveTab() {
       );
       return;
     }
-    // Determine RTMP URL: Restream for multi-platform, or individual platform key
-    let resolvedRtmpUrl = '';
-    if (restreamKey) {
-      resolvedRtmpUrl = buildRtmpUrl(restreamKey);
-    } else {
-      // Fall back to first selected platform with a saved key
-      const PLATFORM_RTMP_URLS: Record<string, string> = {
-        youtube:   'rtmp://a.rtmp.youtube.com/live2',
-        twitch:    'rtmps://live.twitch.tv/app',
-        facebook:  'rtmps://live-api-s.facebook.com:443/rtmp',
-      };
-      for (const pid of selectedIds) {
-        const key = platformStreamKeys[pid];
-        const base = PLATFORM_RTMP_URLS[pid];
-        if (key && base) {
-          resolvedRtmpUrl = `${base}/${key}`;
-          break;
-        }
-      }
-      if (!resolvedRtmpUrl) {
-        Alert.alert(
-          'No stream key set up',
-          'Add a Restream key (for multi-platform) or individual platform stream keys in Settings to go live.',
-          [
-            { text: 'Open Settings', onPress: () => router.push('/settings') },
-            { text: 'Cancel', style: 'cancel' },
-          ]
-        );
-        return;
-      }
-    }
-
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     peakViewersRef.current = 0;
     milestonesFiredRef.current = new Set();
@@ -1461,15 +1425,7 @@ export default function GoLiveTab() {
       const id = await startStreamSession(streamTitle, Array.from(selectedIds));
       sessionIdRef.current = id;
 
-      // 2. Set active RTMP URL and flag start — useEffect fires once NodeCameraView mounts
-      setActiveRtmpUrl(resolvedRtmpUrl);
-      shouldStartRtmpRef.current = true;
       setStatus('starting');
-
-      setTimeout(() => {
-        setStatus('live');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }, 2200);
     } catch (e: any) {
       setStatus('setup');
       Alert.alert('Failed to go live', e?.message ?? 'Something went wrong. Please try again.');
@@ -1478,10 +1434,6 @@ export default function GoLiveTab() {
 
   const handleEndStream = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-
-    // Stop RTMP publish
-    if (nodeCameraRef.current) nodeCameraRef.current.stop();
-    setActiveRtmpUrl('');
 
     // Disconnect chat
     chatClientRef.current?.disconnect();
@@ -1503,8 +1455,6 @@ export default function GoLiveTab() {
   };
 
   const handleStreamAgain = () => {
-    shouldStartRtmpRef.current = false;
-    setActiveRtmpUrl('');
     setStatus('setup');
     setLiveSeconds(0);
     setViewerCount(0);
@@ -1536,24 +1486,13 @@ export default function GoLiveTab() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
-      {/* NodeCameraView handles actual RTMP publish when live/starting */}
-      {(status === 'live' || status === 'starting') && activeRtmpUrl ? (
-        <NodeCameraView
-          ref={nodeCameraRef}
+      {status === 'starting' && (
+        <CameraView
+          ref={cameraRef}
           style={StyleSheet.absoluteFill}
-          outputUrl={activeRtmpUrl}
-          camera={{ cameraFacing: facing === 'front' ? 1 : 0, cameraId: 0 }}
-          audio={{ bitrate: 128000, profile: 1, samplerate: 44100 }}
-          video={{
-            preset: 4, // 720p
-            bitrate: 2000000,
-            profile: 1,
-            fps: 30,
-            videoFrontMirror: facing === 'front',
-          }}
-          autopreview
+          facing={facing}
         />
-      ) : null}
+      )}
 
       {/* Setup view — uses expo CameraView for preview only */}
       {status === 'setup' && (
@@ -1596,17 +1535,11 @@ export default function GoLiveTab() {
           onFlip={() => {
             const next = facing === 'front' ? 'back' : 'front';
             setFacing(next);
-            if (nodeCameraRef.current) {
-              nodeCameraRef.current.switchCamera();
-            }
           }}
           micEnabled={micEnabled}
           onToggleMic={() => {
             Haptics.selectionAsync();
-            setMicEnabled((m) => {
-              if (nodeCameraRef.current) nodeCameraRef.current.toggleMute();
-              return !m;
-            });
+            setMicEnabled((m) => !m);
           }}
           onEndStream={handleEndStream}
           liveSeconds={liveSeconds}
