@@ -26,12 +26,12 @@ type TabConfig = {
 };
 
 const LEFT_TABS: TabConfig[] = [
-  { name: 'index', icon: 'grid-outline', iconFilled: 'grid' },
-  { name: 'discover', icon: 'compass-outline', iconFilled: 'compass' },
+  { name: 'index', icon: 'home-outline', iconFilled: 'home' },
+  { name: 'discover', icon: 'play-circle-outline', iconFilled: 'play-circle' },
 ];
 
 const RIGHT_TABS: TabConfig[] = [
-  { name: 'wallet', icon: 'wallet-outline', iconFilled: 'wallet' },
+  { name: 'activity', icon: 'notifications-outline', iconFilled: 'notifications' },
   { name: 'profile', icon: 'person-outline', iconFilled: 'person' },
 ];
 
@@ -233,7 +233,10 @@ export default function TabLayout() {
       <Tabs.Screen name="index" />
       <Tabs.Screen name="discover" />
       <Tabs.Screen name="live" />
-      <Tabs.Screen name="wallet" />
+      <Tabs.Screen name="activity" />
+      <Tabs.Screen name="chats" options={{ href: null }} />
+      <Tabs.Screen name="gifts" options={{ href: null }} />
+      <Tabs.Screen name="wallet" options={{ href: null }} />
       <Tabs.Screen name="profile" />
     </Tabs>
   );
@@ -260,7 +263,7 @@ function makeBarStyles(C: AppColors) {
       justifyContent: 'space-between',
       width: '90%',
       height: 64,
-      backgroundColor: C.bgDeep + 'F0', // ~94% opacity tint of bgDeep
+      backgroundColor: C.bgDeep,
       borderRadius: 32,
       borderWidth: 1,
       borderColor: C.border,

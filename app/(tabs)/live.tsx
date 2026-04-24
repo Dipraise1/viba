@@ -231,6 +231,71 @@ const overlayStyles = StyleSheet.create({
   },
 });
 
+// ─── No platforms screen ──────────────────────────────────────────────────────
+
+function NoPlatformsScreen({ C }: { C: AppColors }) {
+  const insets = useSafeAreaInsets();
+  const icons = [
+    { name: 'tiktok', bg: '#010101' },
+    { name: 'instagram', bg: '#E1306C' },
+    { name: 'youtube', bg: '#FF0000' },
+    { name: 'twitch', bg: '#9146FF' },
+    { name: 'facebook', bg: '#1877F2' },
+  ];
+
+  return (
+    <View style={[noPlStyles.container, { backgroundColor: C.bg, paddingTop: insets.top + 32, paddingBottom: insets.bottom + 24 }]}>
+      <Animated.View entering={ZoomIn.duration(500)} style={noPlStyles.iconWrap}>
+        <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={noPlStyles.iconCircle} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <FontAwesome5 name="link" size={32} color="#FFFFFF" solid />
+        </LinearGradient>
+      </Animated.View>
+
+      <Animated.Text entering={FadeInDown.delay(200).duration(400)} style={[noPlStyles.title, { color: C.textPrimary }]}>
+        Connect a platform first
+      </Animated.Text>
+      <Animated.Text entering={FadeInDown.delay(300).duration(400)} style={[noPlStyles.sub, { color: C.textSecondary }]}>
+        Viba is a social media app — link at least one account before you can go live.
+      </Animated.Text>
+
+      <Animated.View entering={FadeInDown.delay(380).duration(400)} style={noPlStyles.platformRow}>
+        {icons.map((p, i) => (
+          <Animated.View key={p.name} entering={FadeInDown.delay(420 + i * 50).duration(350).springify()}>
+            <View style={[noPlStyles.platformIcon, { backgroundColor: p.bg }]}>
+              <FontAwesome5 name={p.name} size={18} color="#FFFFFF" solid />
+            </View>
+          </Animated.View>
+        ))}
+      </Animated.View>
+
+      <Animated.View entering={FadeInDown.delay(650).duration(400)} style={noPlStyles.btnWrap}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => router.push('/(tabs)/profile')}
+        >
+          <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={noPlStyles.btn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+            <FontAwesome5 name="link" size={15} color="#FFFFFF" solid />
+            <Text style={noPlStyles.btnText}>Connect Platforms</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
+  );
+}
+
+const noPlStyles = StyleSheet.create({
+  container: { flex: 1, alignItems: 'center', paddingHorizontal: 32, gap: 16 },
+  iconWrap: { marginBottom: 4, marginTop: 20 },
+  iconCircle: { width: 96, height: 96, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  title: { fontFamily: 'Syne-ExtraBold', fontSize: 26, textAlign: 'center' },
+  sub: { fontFamily: 'DMSans-Regular', fontSize: 15, textAlign: 'center', lineHeight: 24, maxWidth: 280 },
+  platformRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  platformIcon: { width: 52, height: 52, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  btnWrap: { marginTop: 12 },
+  btn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 16 },
+  btnText: { fontFamily: 'Syne-Bold', fontSize: 16, color: '#FFFFFF' },
+});
+
 // ─── Permission screen ─────────────────────────────────────────────────────────
 
 function PermissionScreen({ onRequest, C }: { onRequest: () => void; C: AppColors }) {
@@ -331,7 +396,7 @@ function SetupScreen({
             <Ionicons name={micEnabled ? 'mic-outline' : 'mic-off-outline'} size={22} color={micEnabled ? '#FFFFFF' : '#FF4444'} />
           </TouchableOpacity>
         </View>
-        <Text style={setupStyles.readyLabel}>Ready to go live</Text>
+        <Text style={setupStyles.readyLabel}>Go Live</Text>
         <TouchableOpacity style={setupStyles.iconBtn} onPress={() => router.back()} activeOpacity={0.8}>
           <Ionicons name="close" size={22} color="#FFFFFF" />
         </TouchableOpacity>
@@ -1021,6 +1086,7 @@ const startStyles = StyleSheet.create({
 function StreamEndedScreen({
   liveSeconds,
   viewerCount,
+  earnedTokens,
   selectedIds,
   insets,
   C,
@@ -1029,6 +1095,7 @@ function StreamEndedScreen({
 }: {
   liveSeconds: number;
   viewerCount: number;
+  earnedTokens: number;
   selectedIds: Set<PlatformId>;
   insets: { top: number; bottom: number };
   C: AppColors;
@@ -1070,8 +1137,8 @@ function StreamEndedScreen({
         </View>
         <View style={[endedStyles.statDivider, { backgroundColor: C.border }]} />
         <View style={endedStyles.statCard}>
-          <Text style={[endedStyles.statValue, { color: C.textPrimary }]}>{selectedIds.size}</Text>
-          <Text style={[endedStyles.statLabel, { color: C.textMuted }]}>Platforms</Text>
+          <Text style={[endedStyles.statValue, { color: '#C084FC' }]}>+{earnedTokens}</Text>
+          <Text style={[endedStyles.statLabel, { color: C.textMuted }]}>$VIBA earned</Text>
         </View>
       </Animated.View>
 
@@ -1201,7 +1268,7 @@ const endedStyles = StyleSheet.create({
 export default function GoLiveTab() {
   const insets = useSafeAreaInsets();
   const { colors: C } = useTheme();
-  const { platforms, streamSettings, tokenBalance, addTokens, addNotification, restreamKey, restreamToken } = useApp();
+  const { platforms, streamSettings, tokenBalance, addTokens, addNotification, restreamKey, restreamToken, platformStreamKeys, syncTokenBalance } = useApp();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
 
@@ -1224,6 +1291,7 @@ export default function GoLiveTab() {
   const peakViewersRef = useRef(0);
   const milestonesFiredRef = useRef<Set<number>>(new Set());
   const shouldStartRtmpRef = useRef(false);
+  const [activeRtmpUrl, setActiveRtmpUrl] = useState('');
 
   // Start RTMP once NodeCameraView has mounted (status flips to 'starting')
   useEffect(() => {
@@ -1352,16 +1420,36 @@ export default function GoLiveTab() {
       );
       return;
     }
-    if (!restreamKey) {
-      Alert.alert(
-        'Restream not set up',
-        'Add your Restream stream key in Settings to go live.',
-        [
-          { text: 'Open Settings', onPress: () => router.push('/settings') },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-      return;
+    // Determine RTMP URL: Restream for multi-platform, or individual platform key
+    let resolvedRtmpUrl = '';
+    if (restreamKey) {
+      resolvedRtmpUrl = buildRtmpUrl(restreamKey);
+    } else {
+      // Fall back to first selected platform with a saved key
+      const PLATFORM_RTMP_URLS: Record<string, string> = {
+        youtube:   'rtmp://a.rtmp.youtube.com/live2',
+        twitch:    'rtmps://live.twitch.tv/app',
+        facebook:  'rtmps://live-api-s.facebook.com:443/rtmp',
+      };
+      for (const pid of selectedIds) {
+        const key = platformStreamKeys[pid];
+        const base = PLATFORM_RTMP_URLS[pid];
+        if (key && base) {
+          resolvedRtmpUrl = `${base}/${key}`;
+          break;
+        }
+      }
+      if (!resolvedRtmpUrl) {
+        Alert.alert(
+          'No stream key set up',
+          'Add a Restream key (for multi-platform) or individual platform stream keys in Settings to go live.',
+          [
+            { text: 'Open Settings', onPress: () => router.push('/settings') },
+            { text: 'Cancel', style: 'cancel' },
+          ]
+        );
+        return;
+      }
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -1373,7 +1461,8 @@ export default function GoLiveTab() {
       const id = await startStreamSession(streamTitle, Array.from(selectedIds));
       sessionIdRef.current = id;
 
-      // 2. Flag RTMP start — useEffect fires once NodeCameraView mounts
+      // 2. Set active RTMP URL and flag start — useEffect fires once NodeCameraView mounts
+      setActiveRtmpUrl(resolvedRtmpUrl);
       shouldStartRtmpRef.current = true;
       setStatus('starting');
 
@@ -1392,6 +1481,7 @@ export default function GoLiveTab() {
 
     // Stop RTMP publish
     if (nodeCameraRef.current) nodeCameraRef.current.stop();
+    setActiveRtmpUrl('');
 
     // Disconnect chat
     chatClientRef.current?.disconnect();
@@ -1403,6 +1493,7 @@ export default function GoLiveTab() {
       await endStreamSession(sessionIdRef.current, liveSeconds, peakViewersRef.current);
       sessionIdRef.current = null;
     }
+    await syncTokenBalance();
     notifyStreamEnded(liveSeconds, peakViewersRef.current);
     addNotification({
       type: 'milestone',
@@ -1413,6 +1504,7 @@ export default function GoLiveTab() {
 
   const handleStreamAgain = () => {
     shouldStartRtmpRef.current = false;
+    setActiveRtmpUrl('');
     setStatus('setup');
     setLiveSeconds(0);
     setViewerCount(0);
@@ -1431,22 +1523,25 @@ export default function GoLiveTab() {
     return <View style={{ flex: 1, backgroundColor: C.bg }} />;
   }
 
+  // Must connect at least one social platform before going live
+  if (connectedPlatforms.length === 0) {
+    return <NoPlatformsScreen C={C} />;
+  }
+
   if (!cameraPermission.granted || !micPermission.granted) {
     return <PermissionScreen onRequest={requestPermissions} C={C} />;
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  const rtmpOutputUrl = restreamKey ? buildRtmpUrl(restreamKey) : '';
-
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
       {/* NodeCameraView handles actual RTMP publish when live/starting */}
-      {(status === 'live' || status === 'starting') && rtmpOutputUrl ? (
+      {(status === 'live' || status === 'starting') && activeRtmpUrl ? (
         <NodeCameraView
           ref={nodeCameraRef}
           style={StyleSheet.absoluteFill}
-          outputUrl={rtmpOutputUrl}
+          outputUrl={activeRtmpUrl}
           camera={{ cameraFacing: facing === 'front' ? 1 : 0, cameraId: 0 }}
           audio={{ bitrate: 128000, profile: 1, samplerate: 44100 }}
           video={{
@@ -1485,6 +1580,7 @@ export default function GoLiveTab() {
         <StreamEndedScreen
           liveSeconds={liveSeconds}
           viewerCount={viewerCount}
+          earnedTokens={liveSeconds * VIBA_EARN_RATE}
           selectedIds={selectedIds}
           insets={insets}
           C={C}

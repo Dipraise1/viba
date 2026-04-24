@@ -6,6 +6,7 @@ import {
   Dimensions,
   TouchableOpacity,
   Platform,
+  Image,
 } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -48,23 +49,7 @@ function LogoV() {
 
   return (
     <Animated.View style={[styles.logoContainer, glowStyle]}>
-      {/* Glow backdrop */}
-      <Animated.View
-        style={[
-          styles.logoGlow,
-          useAnimatedStyle(() => ({
-            opacity: interpolate(glowAnim.value, [0, 1], [0.3, 0.65]),
-          })),
-        ]}
-      />
-      <LinearGradient
-        colors={['#FF2D87', '#A855F7', '#7B2FFF']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.logoBg}
-      >
-        <Text style={styles.logoText}>V</Text>
-      </LinearGradient>
+      <Image source={require('../../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
     </Animated.View>
   );
 }
@@ -108,14 +93,14 @@ export default function WelcomeScreen() {
           entering={FadeInDown.delay(600).duration(700)}
           style={styles.taglineContainer}
         >
-          <Text style={styles.tagline}>Go Live Everywhere.</Text>
+          <Text style={styles.tagline}>Your Social World.</Text>
           <LinearGradient
             colors={['#FF2D87', '#A855F7']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.taglineAccentBg}
           >
-            <Text style={styles.taglineAccent}>At Once.</Text>
+            <Text style={styles.taglineAccent}>One App.</Text>
           </LinearGradient>
         </Animated.View>
 
@@ -123,7 +108,7 @@ export default function WelcomeScreen() {
           entering={FadeInDown.delay(750).duration(600)}
           style={styles.subtitle}
         >
-          Stream to TikTok, Instagram, YouTube, and more — simultaneously. Manage every comment and gift in one place.
+          Connect TikTok, Instagram, YouTube, and more. Manage your entire social presence and go live across every platform — all from one place.
         </Animated.Text>
 
         {/* CTAs */}
@@ -169,37 +154,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  logoGlow: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#FF2D87',
-    top: -10,
-    left: -10,
-    shadowColor: '#FF2D87',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 40,
-    elevation: 20,
-  },
-  logoBg: {
-    width: 100,
-    height: 100,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#7B2FFF',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.6,
-    shadowRadius: 24,
-    elevation: 16,
-  },
-  logoText: {
-    fontSize: 58,
-    fontFamily: 'Syne-ExtraBold',
-    color: '#FFFFFF',
-    marginTop: -4,
+  logoImage: {
+    width: 200,
+    height: 140,
   },
   brandName: {
     fontFamily: 'Syne-ExtraBold',

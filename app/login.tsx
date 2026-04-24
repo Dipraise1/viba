@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Image,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -211,8 +212,10 @@ export default function LoginScreen() {
         pointerEvents="none"
       />
 
-      {/* Logo placeholder */}
-      <View style={styles.logoArea} />
+      {/* Logo */}
+      <View style={styles.logoArea}>
+        <Image source={require('../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
+      </View>
 
       {/* Auth buttons */}
       <Animated.View entering={FadeInUp.delay(500).duration(600)} style={styles.authArea}>
@@ -287,6 +290,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 60,
     gap: 10,
+  },
+  logoImage: {
+    width: 180,
+    height: 120,
   },
   tagline: {
     fontFamily: 'DMSans-Regular',

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, ReactNod
 import { PlatformId } from '@/constants/platforms';
 import { supabase } from '@/lib/supabase';
 import { fetchRestreamChannels, RESTREAM_CHANNEL_MAP } from '@/lib/restream';
+import { connectYouTube, connectTwitch, connectFacebook, disconnectPlatform } from '@/lib/platformAuth';
 
 export const MIN_VIBA_TO_STREAM = 10; // minimum tokens required to go live
 export const VIBA_EARN_RATE = 1;      // tokens earned per second while live
@@ -74,6 +75,7 @@ interface AppState {
   tokenTransactions: TokenTransaction[];
   addTokens: (amount: number, label: string) => void;
   spendTokens: (amount: number, label: string) => boolean;
+  syncTokenBalance: () => Promise<void>;
   // In-app notifications
   appNotifications: AppNotification[];
   unreadCount: number;
@@ -86,6 +88,12 @@ interface AppState {
   setRestreamKey: (key: string) => Promise<void>;
   setRestreamToken: (token: string) => Promise<void>;
   syncPlatformsFromRestream: () => Promise<void>;
+  // Individual platform stream keys (for non-Restream users)
+  platformStreamKeys: Record<string, string>;
+  setPlatformStreamKey: (platform: string, key: string) => Promise<void>;
+  // Direct OAuth connect (no Restream required)
+  connectedTokens: Record<string, boolean>; // platform → has access token
+  connectPlatformOAuth: (platform: 'youtube' | 'twitch' | 'facebook') => Promise<void>;
 
   updateProfile: (p: Partial<UserProfile>) => Promise<void>;
   togglePlatform: (id: PlatformId) => void;
@@ -112,6 +120,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [restreamKey, setRestreamKeyState] = useState('');
   const [restreamToken, setRestreamTokenState] = useState('');
+  const [platformStreamKeys, setPlatformStreamKeysState] = useState<Record<string, string>>({});
+  const [connectedTokens, setConnectedTokens] = useState<Record<string, boolean>>({});
 
   const [platforms, setPlatforms] = useState<ConnectedPlatform[]>(DEFAULT_PLATFORMS);
 
@@ -172,6 +182,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
+  const tokenBalanceRef = useRef(tokenBalance);
+  useEffect(() => { tokenBalanceRef.current = tokenBalance; }, [tokenBalance]);
+
+  const syncTokenBalance = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from('profiles').update({ viba_balance: tokenBalanceRef.current }).eq('id', user.id);
+  };
+
   const addNotification = (n: Omit<AppNotification, 'id' | 'read' | 'timestamp'>) => {
     setAppNotifications((prev) => [
       { ...n, id: Date.now().toString(), read: false, timestamp: new Date() },
@@ -192,7 +211,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const { data } = await supabase
         .from('profiles')
-        .select('full_name, username, bio, avatar_url, restream_key')
+        .select('full_name, username, bio, avatar_url, restream_key, stream_keys, viba_balance')
         .eq('id', user.id)
         .single();
 
@@ -204,6 +223,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           avatarUrl: data.avatar_url ?? undefined,
         });
         if (data.restream_key) setRestreamKeyState(data.restream_key);
+        if (data.stream_keys) setPlatformStreamKeysState(data.stream_keys);
+
+        // Persist token balance — give 50 welcome bonus to new users
+        const dbBalance: number = data.viba_balance ?? 0;
+        if (dbBalance === 0) {
+          setTokenBalance(50);
+          await supabase.from('profiles').update({ viba_balance: 50 }).eq('id', user.id);
+        } else {
+          setTokenBalance(dbBalance);
+        }
       }
 
       // Load Restream OAuth token if stored
@@ -249,6 +278,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
               ? { ...p, connected: true, username: found.username ?? undefined }
               : p;
           })
+        );
+      }
+
+      // Load direct platform OAuth tokens (YouTube, Twitch, Facebook)
+      const { data: tokenRows } = await supabase
+        .from('platform_tokens')
+        .select('platform')
+        .eq('user_id', user.id)
+        .in('platform', ['youtube', 'twitch', 'facebook']);
+
+      if (tokenRows && tokenRows.length > 0) {
+        const tokens: Record<string, boolean> = {};
+        tokenRows.forEach((r) => { tokens[r.platform] = true; });
+        setConnectedTokens(tokens);
+        // Mark platforms as connected
+        setPlatforms((prev) =>
+          prev.map((p) =>
+            tokens[p.id] ? { ...p, connected: true } : p
+          )
         );
       }
     };
@@ -321,6 +369,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const setPlatformStreamKey = async (platform: string, key: string) => {
+    const updated = { ...platformStreamKeys, [platform]: key };
+    if (!key) delete updated[platform];
+    setPlatformStreamKeysState(updated);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from('profiles').update({ stream_keys: updated }).eq('id', user.id);
+  };
+
   const syncPlatformsFromRestream = async () => {
     if (!restreamToken) return;
     const channels = await fetchRestreamChannels(restreamToken);
@@ -340,6 +397,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const connectPlatformOAuth = async (platform: 'youtube' | 'twitch' | 'facebook') => {
+    const connectors = { youtube: connectYouTube, twitch: connectTwitch, facebook: connectFacebook };
+    const { streamKey, username } = await connectors[platform]();
+
+    // Save stream key locally
+    if (streamKey) {
+      const updated = { ...platformStreamKeys, [platform]: streamKey };
+      setPlatformStreamKeysState(updated);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) await supabase.from('profiles').update({ stream_keys: updated }).eq('id', user.id);
+    }
+
+    // Mark as connected with token
+    setConnectedTokens((prev) => ({ ...prev, [platform]: true }));
+    setPlatforms((prev) =>
+      prev.map((p) =>
+        p.id === platform ? { ...p, connected: true, username: username ?? p.username } : p
+      )
+    );
+  };
+
   const togglePlatform = async (id: PlatformId) => {
     const current = platforms.find((p) => p.id === id);
     if (!current) return;
@@ -351,12 +429,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setPlatforms((prev) =>
         prev.map((p) => p.id === id ? { ...p, connected: false, username: undefined } : p)
       );
+      setConnectedTokens((prev) => { const next = { ...prev }; delete next[id]; return next; });
       if (user) {
         await supabase
           .from('connected_platforms')
           .delete()
           .eq('user_id', user.id)
           .eq('platform', id);
+        // Also clear OAuth token for direct-connect platforms
+        if (['youtube', 'twitch', 'facebook'].includes(id)) {
+          await disconnectPlatform(id);
+        }
       }
     } else {
       // Connect (OAuth flow handled by the UI — this just saves the result)
@@ -384,6 +467,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         tokenTransactions,
         addTokens,
         spendTokens,
+        syncTokenBalance,
         appNotifications,
         unreadCount,
         addNotification,
@@ -394,6 +478,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setRestreamKey,
         setRestreamToken,
         syncPlatformsFromRestream,
+        platformStreamKeys,
+        setPlatformStreamKey,
+        connectedTokens,
+        connectPlatformOAuth,
         updateProfile,
         togglePlatform,
         updateStreamSettings: (s) => setStreamSettings((prev) => ({ ...prev, ...s })),

@@ -28,7 +28,52 @@ import CommentBubble from '@/components/CommentBubble';
 
 const { width } = Dimensions.get('window');
 
-// --- Slide 1: Stream Everywhere ---
+// --- Slide 1: Connect Your Platforms ---
+function SlideConnect() {
+  const icons = [
+    { icon: 'tiktok', color: '#FFFFFF', bg: '#010101', label: 'TikTok', delay: 0 },
+    { icon: 'instagram', color: '#FFFFFF', bg: '#E1306C', label: 'Instagram', delay: 80 },
+    { icon: 'youtube', color: '#FFFFFF', bg: '#FF0000', label: 'YouTube', delay: 160 },
+    { icon: 'facebook', color: '#FFFFFF', bg: '#1877F2', label: 'Facebook', delay: 240 },
+    { icon: 'twitch', color: '#FFFFFF', bg: '#9146FF', label: 'Twitch', delay: 320 },
+  ];
+
+  return (
+    <View style={slideStyles.illustration}>
+      {/* Center link icon */}
+      <Animated.View entering={FadeInDown.delay(200).duration(600).springify()} style={slideStyles.liveBadgeWrap}>
+        <LinearGradient
+          colors={['#FF2D87', '#7B2FFF']}
+          style={slideStyles.liveBadge}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <FontAwesome5 name="link" size={16} color="#FFFFFF" solid />
+          <Text style={slideStyles.liveText}>CONNECT</Text>
+        </LinearGradient>
+        <View style={slideStyles.liveGlow} />
+      </Animated.View>
+
+      {/* Platform icons with connected checkmarks */}
+      <View style={slideStyles.platformRow}>
+        {icons.map((p, i) => (
+          <Animated.View
+            key={p.icon}
+            entering={FadeInDown.delay(300 + p.delay).duration(500).springify()}
+            style={{ alignItems: 'center', gap: 4 }}
+          >
+            <View style={[slideStyles.platformIcon, { backgroundColor: p.bg }]}>
+              <FontAwesome5 name={p.icon} size={20} color={p.color} solid />
+            </View>
+            <View style={slideStyles.connectLine} />
+          </Animated.View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+// --- Slide 2 (formerly 1): Stream Everywhere ---
 function SlideStream() {
   const icons = [
     { icon: 'tiktok', color: '#FFFFFF', bg: '#010101', delay: 0 },
@@ -160,8 +205,14 @@ function SlideGifts() {
 
 const SLIDES = [
   {
+    id: 'connect',
+    title: 'Connect Your Platforms',
+    subtitle: 'Link your social accounts once.\nViba syncs everything automatically.',
+    Illustration: SlideConnect,
+  },
+  {
     id: 'stream',
-    title: 'Stream to All Platforms',
+    title: 'Go Live Everywhere',
     subtitle: 'One tap. Every platform.\nSimultaneously.',
     Illustration: SlideStream,
   },

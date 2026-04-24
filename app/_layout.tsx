@@ -168,6 +168,11 @@ function ThemedApp() {
           <Stack.Screen name="streams" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="gift-analytics" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="activity" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="followers" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="following" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="search" options={{ animation: 'fade' }} />
+          <Stack.Screen name="chat/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="user/[id]" options={{ animation: 'slide_from_right' }} />
         </Stack>
       </View>
     </AuthGate>

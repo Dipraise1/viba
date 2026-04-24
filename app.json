@@ -7,18 +7,27 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
       "backgroundColor": "#05050F"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.viba.app"
+      "bundleIdentifier": "com.viba.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A0A12"
       },
-      "package": "com.viba.app"
+      "package": "com.viba.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -52,6 +61,13 @@
     "scheme": "viba",
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4a103aee-dff5-403d-a508-c3b6488b3f41"
+      }
+    },
+    "owner": "deepraise"
   }
 }

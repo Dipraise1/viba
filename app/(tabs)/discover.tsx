@@ -5,20 +5,20 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
-  Dimensions,
-  FlatList,
   ActivityIndicator,
+  Dimensions,
   RefreshControl,
 } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
-  FadeInDown,
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
+  withRepeat,
+  withSequence,
+  withTiming,
+  FadeInDown,
 } from 'react-native-reanimated';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -26,11 +26,14 @@ import { useTheme } from '@/context/ThemeContext';
 import type { AppColors } from '@/constants/themes';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { getPlatform } from '@/constants/platforms';
+import { getTrendingCreators, type TrendingCreator } from '@/lib/feed';
 
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = width * 0.70;
-
-// ─── Types ────────────────────────────────────────────────────────────────────
+const { width: W } = Dimensions.get('window');
+const CARD_GAP = 10;
+const H_PAD = 16;
+const CARD_W = (W - H_PAD * 2 - CARD_GAP) / 2;
+const CARD_H = CARD_W * 1.38;
 
 interface CreatorRow {
   id: string;
@@ -44,128 +47,107 @@ interface CreatorRow {
   is_live: boolean;
 }
 
-const PLATFORM_ICONS: Record<string, string> = {
-  tiktok: 'tiktok',
-  instagram: 'instagram',
-  youtube: 'youtube',
-  facebook: 'facebook',
-  twitch: 'twitch',
-};
-
-const GRADIENT_POOL: readonly [string, string][] = [
-  ['#FF2D87', '#7B2FFF'],
-  ['#7B2FFF', '#06B6D4'],
-  ['#FF6B35', '#FFB800'],
-  ['#00D97E', '#06B6D4'],
-  ['#EC4899', '#FF6B35'],
-  ['#A855F7', '#7B2FFF'],
+const GRADIENT_POOL: [string, string, string][] = [
+  ['#FF2D87', '#C020E0', '#7B2FFF'],
+  ['#FF6B35', '#FF2D87', '#C020E0'],
+  ['#00D4AA', '#0094FF', '#7B2FFF'],
+  ['#FFD700', '#FF6B35', '#FF2D87'],
+  ['#00C9FF', '#92FE9D', '#00D4AA'],
+  ['#FC466B', '#3F5EFB', '#7B2FFF'],
+  ['#f7971e', '#ffd200', '#FF6B35'],
+  ['#11998e', '#38ef7d', '#00D4AA'],
 ];
 
-function creatorGradient(id: string): readonly [string, string] {
-  const idx = id.charCodeAt(0) % GRADIENT_POOL.length;
-  return GRADIENT_POOL[idx];
+function creatorGradient(id: string): [string, string, string] {
+  return GRADIENT_POOL[id.charCodeAt(0) % GRADIENT_POOL.length];
 }
 
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .slice(0, 2)
-    .join('');
+function initials(name: string) {
+  return name.split(' ').map((w) => w[0] ?? '').join('').toUpperCase().slice(0, 2) || '??';
 }
 
-// ─── Avatar ───────────────────────────────────────────────────────────────────
+function timeAgo(iso: string | null) {
+  if (!iso) return '';
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
 
-function Avatar({
-  creator,
-  size = 52,
-}: {
-  creator: CreatorRow;
-  size?: number;
-}) {
-  const grad = creatorGradient(creator.id);
+const CATEGORIES = ['All', 'Trending', 'Music', 'Gaming', 'Talk', 'Beauty', 'Fitness'];
+
+function PulseDot({ size = 8, color = '#FF2D87' }: { size?: number; color?: string }) {
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(1);
+
+  React.useEffect(() => {
+    scale.value = withRepeat(
+      withSequence(withTiming(1.6, { duration: 700 }), withTiming(1, { duration: 700 })),
+      -1, false
+    );
+    opacity.value = withRepeat(
+      withSequence(withTiming(0.3, { duration: 700 }), withTiming(1, { duration: 700 })),
+      -1, false
+    );
+  }, []);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
   return (
-    <LinearGradient
-      colors={grad as any}
-      style={[
-        avatarS.circle,
-        { width: size, height: size, borderRadius: size / 2 },
-      ]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-    >
-      <Text style={[avatarS.initials, { fontSize: size * 0.32 }]}>
-        {initials(creator.display_name || creator.handle)}
-      </Text>
-    </LinearGradient>
+    <Animated.View style={[animStyle, { width: size, height: size, borderRadius: size / 2, backgroundColor: color }]} />
   );
 }
 
-const avatarS = StyleSheet.create({
-  circle: { alignItems: 'center', justifyContent: 'center' },
-  initials: { fontFamily: 'Syne-Bold', color: '#FFFFFF' },
-});
-
-// ─── Live card (carousel) ─────────────────────────────────────────────────────
-
-function LiveCard({ creator }: { creator: CreatorRow }) {
-  const scale = useSharedValue(1);
-  const aStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+function LiveCard({ creator, index }: { creator: CreatorRow; index: number }) {
   const grad = creatorGradient(creator.id);
   const viewers = creator.total_viewers ?? 0;
+  const platforms = creator.platforms ?? [];
 
   return (
-    <Animated.View style={[liveCardS.wrap, aStyle]}>
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPressIn={() => { scale.value = withSpring(0.97); }}
-        onPressOut={() => { scale.value = withSpring(1); }}
-        onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-      >
-        <LinearGradient
-          colors={[grad[0], grad[1], 'rgba(0,0,0,0.55)']}
-          style={liveCardS.card}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <View style={liveCardS.liveBadge}>
-            <View style={liveCardS.liveDot} />
-            <Text style={liveCardS.liveText}>LIVE</Text>
-          </View>
-
-          <View style={liveCardS.avatarBorder}>
-            <Avatar creator={creator} size={62} />
-          </View>
-
-          <View style={liveCardS.info}>
-            <Text style={liveCardS.name} numberOfLines={1}>
-              {creator.display_name || creator.handle}
-            </Text>
-            <Text style={liveCardS.handle}>{creator.handle}</Text>
-            <View style={liveCardS.metaRow}>
-              {viewers > 0 && (
-                <View style={liveCardS.viewerChip}>
-                  <Ionicons name="eye-outline" size={11} color="rgba(255,255,255,0.8)" />
-                  <Text style={liveCardS.viewerText}>
-                    {viewers >= 1000 ? `${(viewers / 1000).toFixed(1)}K` : viewers}
-                  </Text>
-                </View>
-              )}
+    <Animated.View entering={FadeInDown.delay(index * 60).duration(400)} style={{ width: CARD_W }}>
+      <TouchableOpacity activeOpacity={0.88} style={liveCardS.card}>
+        <LinearGradient colors={grad} style={liveCardS.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <View style={liveCardS.topRow}>
+            <View style={liveCardS.liveBadge}>
+              <PulseDot size={5} color="#FFFFFF" />
+              <Text style={liveCardS.liveBadgeText}>LIVE</Text>
             </View>
-            {creator.platforms && creator.platforms.length > 0 && (
+            {viewers > 0 && (
+              <View style={liveCardS.viewerPill}>
+                <Ionicons name="eye" size={9} color="rgba(255,255,255,0.8)" />
+                <Text style={liveCardS.viewerText}>
+                  {viewers >= 1000 ? `${(viewers / 1000).toFixed(1)}K` : viewers}
+                </Text>
+              </View>
+            )}
+          </View>
+          <View style={liveCardS.avatarWrap}>
+            <View style={liveCardS.avatarRing}>
+              <View style={liveCardS.avatar}>
+                <Text style={liveCardS.avatarText}>{initials(creator.display_name || creator.handle)}</Text>
+              </View>
+            </View>
+          </View>
+          <View style={liveCardS.bottom}>
+            <Text style={liveCardS.name} numberOfLines={1}>{creator.display_name || creator.handle}</Text>
+            <Text style={liveCardS.handle} numberOfLines={1}>{creator.handle}</Text>
+            {platforms.length > 0 && (
               <View style={liveCardS.platforms}>
-                {creator.platforms.slice(0, 4).map((p) =>
-                  PLATFORM_ICONS[p] ? (
-                    <View key={p} style={liveCardS.platformIcon}>
-                      <FontAwesome5
-                        name={PLATFORM_ICONS[p]}
-                        size={9}
-                        color="rgba(255,255,255,0.75)"
-                        solid
-                      />
-                    </View>
-                  ) : null
-                )}
+                {platforms.slice(0, 3).map((p) => {
+                  try {
+                    const plat = getPlatform(p as any);
+                    return (
+                      <View key={p} style={[liveCardS.platDot, { backgroundColor: plat.gradient[0] + '40' }]}>
+                        <FontAwesome5 name={plat.icon} size={7} color="#FFFFFF" solid />
+                      </View>
+                    );
+                  } catch { return null; }
+                })}
               </View>
             )}
           </View>
@@ -176,165 +158,162 @@ function LiveCard({ creator }: { creator: CreatorRow }) {
 }
 
 const liveCardS = StyleSheet.create({
-  wrap: { width: CARD_WIDTH, marginRight: 12 },
-  card: {
-    borderRadius: 20,
-    padding: 18,
-    height: 196,
-    justifyContent: 'space-between',
-    overflow: 'hidden',
-  },
+  card: { borderRadius: 16, overflow: 'hidden', height: CARD_H },
+  gradient: { flex: 1, padding: 10 },
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   liveBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,45,135,0.88)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  liveDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#FFFFFF' },
-  liveText: { fontFamily: 'Syne-Bold', fontSize: 10, color: '#FFFFFF', letterSpacing: 1 },
-  avatarBorder: {
-    alignSelf: 'flex-start',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.28)',
-    borderRadius: 36,
-  },
-  info: { gap: 3 },
-  name: { fontFamily: 'Syne-Bold', fontSize: 16, color: '#FFFFFF' },
-  handle: { fontFamily: 'DMSans-Regular', fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: -2 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  viewerChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 8,
+    backgroundColor: 'rgba(255,0,60,0.75)', borderRadius: 6,
     paddingHorizontal: 7, paddingVertical: 3,
   },
-  viewerText: { fontFamily: 'DMSans-Medium', fontSize: 11, color: 'rgba(255,255,255,0.85)' },
-  platforms: { flexDirection: 'row', gap: 5, marginTop: 3 },
-  platformIcon: {
-    width: 22, height: 22, borderRadius: 7,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+  liveBadgeText: { fontFamily: 'DMSans-Bold', fontSize: 9, color: '#FFFFFF', letterSpacing: 0.5 },
+  viewerPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: 'rgba(0,0,0,0.35)', borderRadius: 6,
+    paddingHorizontal: 6, paddingVertical: 3,
+  },
+  viewerText: { fontFamily: 'DMSans-Bold', fontSize: 9, color: 'rgba(255,255,255,0.9)' },
+  avatarWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  avatarRing: {
+    width: 60, height: 60, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center', justifyContent: 'center',
   },
+  avatar: {
+    width: 52, height: 52, borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarText: { fontFamily: 'Syne-Bold', fontSize: 18, color: '#FFFFFF' },
+  bottom: { gap: 2 },
+  name: { fontFamily: 'DMSans-Bold', fontSize: 13, color: '#FFFFFF' },
+  handle: { fontFamily: 'DMSans-Regular', fontSize: 11, color: 'rgba(255,255,255,0.7)' },
+  platforms: { flexDirection: 'row', gap: 4, marginTop: 3 },
+  platDot: { width: 16, height: 16, borderRadius: 5, alignItems: 'center', justifyContent: 'center' },
 });
 
-// ─── Creator row (recently live) ──────────────────────────────────────────────
-
-function CreatorRow({ creator, index }: { creator: CreatorRow; index: number }) {
-  const streamCount = creator.stream_count ?? 0;
-  const grad = creatorGradient(creator.id);
+function RecentRow({ creator, index }: { creator: CreatorRow; index: number }) {
   const { colors: C } = useTheme();
-  const creatorRowS = useMemo(() => makeCreatorRowStyles(C), [C]);
-
-  function timeAgo(d: string | null) {
-    if (!d) return 'Never streamed';
-    const diff = Date.now() - new Date(d).getTime();
-    const h = Math.floor(diff / 3600000);
-    if (h < 1) return 'Streamed just now';
-    if (h < 24) return `Streamed ${h}h ago`;
-    const days = Math.floor(h / 24);
-    if (days === 1) return 'Streamed yesterday';
-    return `Streamed ${days}d ago`;
-  }
+  const grad = creatorGradient(creator.id);
 
   return (
-    <Animated.View entering={FadeInDown.delay(index * 55).duration(380)}>
-      <TouchableOpacity
-        style={creatorRowS.row}
-        activeOpacity={0.72}
-        onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-      >
-        <Avatar creator={creator} size={44} />
-        <View style={creatorRowS.info}>
-          <Text style={creatorRowS.name} numberOfLines={1}>
-            {creator.display_name || creator.handle}
-          </Text>
-          <Text style={creatorRowS.sub}>{timeAgo(creator.last_streamed_at)}</Text>
+    <Animated.View entering={FadeInDown.delay(index * 50).duration(350)} style={recentS.row}>
+      <LinearGradient colors={grad} style={recentS.avatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+        <Text style={recentS.avatarText}>{initials(creator.display_name || creator.handle)}</Text>
+      </LinearGradient>
+      <View style={recentS.info}>
+        <Text style={[recentS.name, { color: C.textPrimary }]} numberOfLines={1}>
+          {creator.display_name || creator.handle}
+        </Text>
+        <View style={recentS.metaRow}>
+          <Text style={[recentS.meta, { color: C.textMuted }]}>{timeAgo(creator.last_streamed_at)}</Text>
+          {creator.stream_count > 0 && (
+            <>
+              <Text style={[recentS.dot, { color: C.textMuted }]}>·</Text>
+              <Text style={[recentS.meta, { color: C.textMuted }]}>
+                {creator.stream_count} stream{creator.stream_count !== 1 ? 's' : ''}
+              </Text>
+            </>
+          )}
         </View>
-        <View style={creatorRowS.right}>
-          <Text style={creatorRowS.streams}>{streamCount}</Text>
-          <Text style={creatorRowS.streamsLabel}>stream{streamCount !== 1 ? 's' : ''}</Text>
+      </View>
+      {(creator.platforms ?? []).length > 0 && (
+        <View style={recentS.platforms}>
+          {(creator.platforms ?? []).slice(0, 3).map((p) => {
+            try {
+              const plat = getPlatform(p as any);
+              return (
+                <View key={p} style={[recentS.platDot, { backgroundColor: plat.gradient[0] + '22' }]}>
+                  <FontAwesome5 name={plat.icon} size={8} color={plat.gradient[0]} solid />
+                </View>
+              );
+            } catch { return null; }
+          })}
         </View>
-      </TouchableOpacity>
+      )}
     </Animated.View>
   );
 }
 
-function makeCreatorRowStyles(C: AppColors) {
-  return StyleSheet.create({
-    row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.border },
-    info: { flex: 1, gap: 2 },
-    name: { fontFamily: 'DMSans-Bold', fontSize: 14, color: C.textPrimary },
-    sub: { fontFamily: 'DMSans-Regular', fontSize: 12, color: C.textMuted },
-    right: { alignItems: 'flex-end', gap: 1 },
-    streams: { fontFamily: 'Syne-Bold', fontSize: 15, color: C.textPrimary },
-    streamsLabel: { fontFamily: 'DMSans-Regular', fontSize: 10, color: C.textMuted },
-  });
-}
+const recentS = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, paddingHorizontal: 14 },
+  avatar: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  avatarText: { fontFamily: 'Syne-Bold', fontSize: 16, color: '#FFFFFF' },
+  info: { flex: 1, gap: 3 },
+  name: { fontFamily: 'DMSans-Bold', fontSize: 14 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  meta: { fontFamily: 'DMSans-Regular', fontSize: 12 },
+  dot: { fontFamily: 'DMSans-Regular', fontSize: 12 },
+  platforms: { flexDirection: 'row', gap: 4 },
+  platDot: { width: 20, height: 20, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+});
 
-// ─── Empty state ──────────────────────────────────────────────────────────────
-
-function EmptyDiscover() {
-  const { colors: C } = useTheme();
+function NoLiveState({ C }: { C: AppColors }) {
   return (
-    <Animated.View entering={FadeInDown.delay(200).duration(400)} style={{ paddingTop: 16 }}>
+    <View style={emptyS.wrap}>
       <LinearGradient
-        colors={[C.purpleDim, C.pinkDim]}
-        style={[{ borderRadius: 20, borderWidth: 1, borderColor: C.borderPurple, padding: 28, alignItems: 'center' as const, gap: 12 }]}
+        colors={['rgba(255,45,135,0.1)', 'rgba(123,47,255,0.1)']}
+        style={emptyS.icon}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        <View style={{ width: 68, height: 68, borderRadius: 22, backgroundColor: C.purpleDim, alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
-          <Ionicons name="compass-outline" size={36} color={C.purpleLight} />
-        </View>
-        <Text style={{ fontFamily: 'Syne-Bold', fontSize: 18, color: C.textPrimary, textAlign: 'center' }}>Be the first to stream</Text>
-        <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 13, color: C.textMuted, textAlign: 'center', lineHeight: 20 }}>
-          The discover feed shows creators who have gone live on Viba. Start your first stream and appear here.
-        </Text>
+        <Ionicons name="radio-outline" size={32} color={C.pink} />
       </LinearGradient>
-    </Animated.View>
+      <Text style={[emptyS.title, { color: C.textPrimary }]}>Nobody live yet</Text>
+      <Text style={[emptyS.sub, { color: C.textMuted }]}>
+        Be the first to go live — your stream will appear here for everyone.
+      </Text>
+      <TouchableOpacity activeOpacity={0.85} onPress={() => router.push('/(tabs)/live')} style={emptyS.btn}>
+        <LinearGradient
+          colors={['#FF2D87', '#7B2FFF']} style={emptyS.btnGrad}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+        >
+          <Ionicons name="radio" size={15} color="#FFFFFF" />
+          <Text style={emptyS.btnText}>Go Live Now</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
   );
 }
 
-// ─── Main screen ──────────────────────────────────────────────────────────────
+const emptyS = StyleSheet.create({
+  wrap: { alignItems: 'center', paddingVertical: 36, paddingHorizontal: 32, gap: 12 },
+  icon: { width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  title: { fontFamily: 'Syne-Bold', fontSize: 18, textAlign: 'center' },
+  sub: { fontFamily: 'DMSans-Regular', fontSize: 13, textAlign: 'center', lineHeight: 20, maxWidth: 260 },
+  btn: { borderRadius: 12, overflow: 'hidden', marginTop: 4 },
+  btnGrad: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  btnText: { fontFamily: 'Syne-Bold', fontSize: 14, color: '#FFFFFF' },
+});
 
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { colors: C } = useTheme();
-  const styles = useMemo(() => makeDiscoverStyles(C), [C]);
+  const styles = useMemo(() => makeStyles(C), [C]);
 
   const [all, setAll] = useState<CreatorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [search, setSearch] = useState('');
-  const [searchFocused, setSearchFocused] = useState(false);
+  const [activeCategory, setActiveCategory] = useState('All');
 
-  const live = all.filter((c) => c.is_live);
-  const recent = all.filter((c) => !c.is_live && c.stream_count > 0);
-
-  const searchResults = search.trim()
-    ? all.filter(
-        (c) =>
-          c.display_name.toLowerCase().includes(search.toLowerCase()) ||
-          c.handle.toLowerCase().includes(search.toLowerCase())
-      )
-    : null;
+  const liveCreators = all.filter((c) => c.is_live);
+  const recentCreators = all.filter((c) => !c.is_live && c.stream_count > 0);
 
   const load = useCallback(async () => {
+    // Try trending_creators (algorithm-ranked); fall back to creator_discover
+    const trending = await getTrendingCreators(user?.id, 50);
+    if (trending.length) {
+      setAll(trending as unknown as CreatorRow[]);
+      return;
+    }
     const { data, error } = await supabase
       .from('creator_discover')
       .select('*')
       .order('is_live', { ascending: false })
-      .order('last_streamed_at', { ascending: false })
+      .order('total_viewers', { ascending: false })
       .limit(50);
-
-    if (!error && data) {
-      // Exclude current user from discover
-      setAll(data.filter((c: CreatorRow) => c.id !== user?.id));
-    }
+    if (!error && data) setAll(data.filter((c: CreatorRow) => c.id !== user?.id));
   }, [user?.id]);
 
   useFocusEffect(
@@ -344,208 +323,127 @@ export default function DiscoverScreen() {
     }, [load])
   );
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  };
+  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
-  const isEmpty = !loading && all.length === 0;
+  const liveRows: CreatorRow[][] = [];
+  for (let i = 0; i < liveCreators.length; i += 2) {
+    liveRows.push(liveCreators.slice(i, i + 2));
+  }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + 16, paddingBottom: 110 },
-      ]}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={C.pink}
-        />
-      }
-    >
-      {/* Header */}
-      <Animated.View entering={FadeInDown.delay(0).duration(400)} style={styles.header}>
-        <Text style={styles.title}>Discover</Text>
-        <Text style={styles.sub}>Creators streaming on Viba</Text>
-      </Animated.View>
+    <View style={styles.container}>
+      <View style={[styles.topBar, { paddingTop: insets.top + 10 }]}>
+        {liveCreators.length > 0 && (
+          <View style={styles.countBadge}>
+            <PulseDot size={6} color={C.pink} />
+            <Text style={styles.countText}>{liveCreators.length} live</Text>
+          </View>
+        )}
+      </View>
 
-      {/* Search */}
-      <Animated.View entering={FadeInDown.delay(70).duration(400)}>
-        <View style={[styles.searchBar, searchFocused && styles.searchBarFocused]}>
-          <Ionicons
-            name="search-outline"
-            size={17}
-            color={searchFocused ? C.pink : C.textMuted}
-          />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search creators…"
-            placeholderTextColor={C.textMuted}
-            style={styles.searchInput}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            returnKeyType="search"
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')} activeOpacity={0.7}>
-              <Ionicons name="close-circle" size={16} color={C.textMuted} />
+      <ScrollView
+        horizontal showsHorizontalScrollIndicator={false}
+        style={styles.catScroll} contentContainerStyle={styles.catContent}
+      >
+        {CATEGORIES.map((cat) => {
+          const active = cat === activeCategory;
+          return (
+            <TouchableOpacity
+              key={cat}
+              onPress={() => { Haptics.selectionAsync(); setActiveCategory(cat); }}
+              activeOpacity={0.75}
+              style={[styles.catPill, active && styles.catPillActive]}
+            >
+              {active && (
+                <LinearGradient
+                  colors={['#FF2D87', '#7B2FFF']} style={StyleSheet.absoluteFill}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                />
+              )}
+              <Text style={[styles.catText, active && styles.catTextActive]}>{cat}</Text>
             </TouchableOpacity>
-          )}
-        </View>
-      </Animated.View>
+          );
+        })}
+      </ScrollView>
 
-      {/* Loading */}
-      {loading && (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={C.pink} />
-        </View>
-      )}
-
-      {/* Search results */}
-      {!loading && searchResults !== null && (
-        <Animated.View entering={FadeInDown.duration(280)} style={styles.section}>
-          <Text style={styles.sectionSub}>
-            {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} for "{search}"
-          </Text>
-          {searchResults.length > 0 ? (
-            <View style={styles.card}>
-              {searchResults.map((c, i) => (
-                <CreatorRow key={c.id} creator={c} index={i} />
+      {loading ? (
+        <View style={styles.loadingWrap}><ActivityIndicator color={C.pink} size="large" /></View>
+      ) : (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.pink} />}
+        >
+          {liveCreators.length === 0 ? (
+            <NoLiveState C={C} />
+          ) : (
+            <View style={styles.grid}>
+              {liveRows.map((row, ri) => (
+                <View key={ri} style={styles.gridRow}>
+                  {row.map((creator, ci) => (
+                    <LiveCard key={creator.id} creator={creator} index={ri * 2 + ci} />
+                  ))}
+                  {row.length === 1 && <View style={{ width: CARD_W }} />}
+                </View>
               ))}
             </View>
-          ) : (
-            <View style={styles.noResults}>
-              <Ionicons name="search-outline" size={28} color={C.textMuted} />
-              <Text style={styles.noResultsText}>No creators found</Text>
-            </View>
-          )}
-        </Animated.View>
-      )}
-
-      {/* Main feed (no search active) */}
-      {!loading && searchResults === null && (
-        <>
-          {/* Empty state */}
-          {isEmpty && <EmptyDiscover />}
-
-          {/* Live now */}
-          {live.length > 0 && (
-            <>
-              <Animated.View
-                entering={FadeInDown.delay(140).duration(400)}
-                style={styles.sectionHeader}
-              >
-                <View style={styles.sectionLeft}>
-                  <View style={styles.liveIndicator} />
-                  <Text style={styles.sectionTitle}>Live Now</Text>
-                </View>
-                <Text style={styles.sectionCount}>{live.length} streaming</Text>
-              </Animated.View>
-
-              <Animated.View entering={FadeInDown.delay(180).duration(400)}>
-                <FlatList
-                  horizontal
-                  data={live}
-                  keyExtractor={(c) => c.id}
-                  renderItem={({ item }) => <LiveCard creator={item} />}
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.carousel}
-                  scrollEnabled
-                />
-              </Animated.View>
-            </>
           )}
 
-          {/* Recently live */}
-          {recent.length > 0 && (
+          {recentCreators.length > 0 && (
             <>
-              <Animated.View
-                entering={FadeInDown.delay(240).duration(400)}
-                style={styles.sectionHeader}
-              >
-                <View style={styles.sectionLeft}>
-                  <Ionicons name="time-outline" size={15} color={C.textMuted} />
-                  <Text style={styles.sectionTitle}>Recently Live</Text>
-                </View>
-              </Animated.View>
-
-              <Animated.View
-                entering={FadeInDown.delay(280).duration(400)}
-                style={styles.card}
-              >
-                {recent.slice(0, 20).map((c, i) => (
-                  <CreatorRow key={c.id} creator={c} index={i} />
+              <View style={[styles.sectionHeader, { marginTop: 8 }]}>
+                <Ionicons name="time-outline" size={15} color={C.textMuted} />
+                <Text style={styles.sectionTitle}>Recently Live</Text>
+              </View>
+              <View style={[styles.recentCard, { backgroundColor: C.bgCard, borderColor: C.border }]}>
+                {recentCreators.slice(0, 15).map((c, i) => (
+                  <View key={c.id}>
+                    <RecentRow creator={c} index={i} />
+                    {i < Math.min(recentCreators.length, 15) - 1 && (
+                      <View style={[styles.divider, { backgroundColor: C.border }]} />
+                    )}
+                  </View>
                 ))}
-              </Animated.View>
+              </View>
             </>
           )}
-
-          {/* Invite CTA */}
-          {!isEmpty && (
-            <Animated.View entering={FadeInDown.delay(360).duration(400)}>
-              <TouchableOpacity
-                activeOpacity={0.84}
-                onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
-              >
-                <LinearGradient
-                  colors={['rgba(123,47,255,0.18)', 'rgba(255,45,135,0.12)']}
-                  style={styles.ctaCard}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <View style={styles.ctaIcon}>
-                    <Ionicons name="person-add-outline" size={20} color={C.pink} />
-                  </View>
-                  <View style={styles.ctaText}>
-                    <Text style={styles.ctaTitle}>Invite a creator</Text>
-                    <Text style={styles.ctaSub}>
-                      Share Viba — they earn 100 $VIBA on signup
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={17} color={C.textMuted} />
-                </LinearGradient>
-              </TouchableOpacity>
-            </Animated.View>
-          )}
-        </>
+        </ScrollView>
       )}
-    </ScrollView>
+    </View>
   );
 }
 
-function makeDiscoverStyles(C: AppColors) {
+function makeStyles(C: AppColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: C.bg },
-    content: { paddingHorizontal: 20, gap: 14 },
-    header: { gap: 2, marginBottom: 2 },
-    title: { fontFamily: 'Syne-ExtraBold', fontSize: 26, color: C.textPrimary },
-    sub: { fontFamily: 'DMSans-Regular', fontSize: 13, color: C.textMuted },
-    searchBar: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.bgCard, borderRadius: 14, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, paddingVertical: 12 },
-    searchBarFocused: { borderColor: C.pink, backgroundColor: C.pinkDim },
-    searchInput: { flex: 1, fontFamily: 'DMSans-Regular', fontSize: 15, color: C.textPrimary },
-    loadingWrap: { paddingVertical: 40, alignItems: 'center' },
-    section: { gap: 10 },
-    sectionSub: { fontFamily: 'DMSans-Regular', fontSize: 13, color: C.textMuted, marginBottom: 2 },
-    noResults: { alignItems: 'center', paddingVertical: 36, gap: 10 },
-    noResultsText: { fontFamily: 'DMSans-Regular', fontSize: 14, color: C.textMuted },
-    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, marginBottom: -2 },
-    sectionLeft: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+    topBar: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: H_PAD, paddingBottom: 10,
+    },
+    pageTitle: { fontFamily: 'Syne-ExtraBold', fontSize: 26, color: C.textPrimary },
+    countBadge: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      backgroundColor: C.pinkDim, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5,
+    },
+    countText: { fontFamily: 'DMSans-Bold', fontSize: 12, color: C.pink },
+    catScroll: { flexGrow: 0 },
+    catContent: { paddingHorizontal: H_PAD, gap: 8, paddingBottom: 12 },
+    catPill: {
+      borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7,
+      backgroundColor: C.bgCard, borderWidth: 1, borderColor: C.border, overflow: 'hidden',
+    },
+    catPillActive: { borderColor: 'transparent' },
+    catText: { fontFamily: 'DMSans-Medium', fontSize: 13, color: C.textMuted },
+    catTextActive: { color: '#FFFFFF', fontFamily: 'DMSans-Bold' },
+    loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    scroll: { flex: 1 },
+    scrollContent: { paddingHorizontal: H_PAD, gap: 12 },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 2 },
     sectionTitle: { fontFamily: 'Syne-Bold', fontSize: 16, color: C.textPrimary },
-    sectionCount: { fontFamily: 'DMSans-Regular', fontSize: 12, color: C.textMuted },
-    liveIndicator: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.pink },
-    carousel: { paddingRight: 20, marginLeft: -20, paddingLeft: 20 },
-    card: { backgroundColor: C.bgCard, borderRadius: 16, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, paddingVertical: 4 },
-    ctaCard: { borderRadius: 16, borderWidth: 1, borderColor: C.borderPurple, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 },
-    ctaIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: C.pinkDim, alignItems: 'center', justifyContent: 'center' },
-    ctaText: { flex: 1, gap: 2 },
-    ctaTitle: { fontFamily: 'DMSans-Bold', fontSize: 14, color: C.textPrimary },
-    ctaSub: { fontFamily: 'DMSans-Regular', fontSize: 12, color: C.textMuted, lineHeight: 17 },
+    grid: { gap: CARD_GAP },
+    gridRow: { flexDirection: 'row', gap: CARD_GAP },
+    recentCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+    divider: { height: 1, marginLeft: 72 },
   });
 }
