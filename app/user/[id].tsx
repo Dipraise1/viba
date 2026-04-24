@@ -32,11 +32,19 @@ interface Creator {
   id: string;
   handle: string;
   display_name: string;
+  bio?: string | null;
   total_viewers: number;
   platforms: string[] | null;
   is_live: boolean;
   stream_count: number;
   last_streamed_at: string | null;
+}
+
+interface RealStats {
+  follower_count: number;
+  following_count: number;
+  post_count: number;
+  stream_count: number;
 }
 
 const GRADIENT_POOL: [string, string, string][] = [
@@ -106,44 +114,6 @@ function getStats(id: string) {
   };
 }
 
-// ─── Post cell ────────────────────────────────────────────────────────────────
-
-const IMG_SEEDS = [
-  'profile-post-a','profile-post-b','profile-post-c','profile-post-d',
-  'profile-post-e','profile-post-f','profile-post-g','profile-post-h',
-  'profile-post-i','profile-post-j','profile-post-k','profile-post-l',
-];
-
-function PostCell({ index, creatorId, C }: { index: number; creatorId: string; C: AppColors }) {
-  const seed = IMG_SEEDS[(creatorId.charCodeAt(0) + index) % IMG_SEEDS.length];
-  const viewSeed = creatorId.charCodeAt(0) + index;
-  const views = 800 + (viewSeed * 431) % 44000;
-  const fmtV = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
-
-  return (
-    <TouchableOpacity
-      activeOpacity={0.88}
-      style={{ width: POST_CELL, height: POST_CELL_H, position: 'relative', overflow: 'hidden' }}
-    >
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: '#111' }]} />
-      <Image
-        source={{ uri: `https://picsum.photos/seed/${seed}-${creatorId.slice(0, 4)}/400/560` }}
-        style={StyleSheet.absoluteFill}
-        resizeMode="cover"
-      />
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.6)']}
-        style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end', padding: 6 }]}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-          <Ionicons name="play" size={10} color="rgba(255,255,255,0.9)" />
-          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 10, color: '#FFFFFF' }}>{fmtV(views)}</Text>
-        </View>
-      </LinearGradient>
-    </TouchableOpacity>
-  );
-}
-
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function UserProfileScreen() {
@@ -155,6 +125,8 @@ export default function UserProfileScreen() {
 
   const [creator, setCreator] = useState<Creator | null>(null);
   const [platformUsernames, setPlatformUsernames] = useState<Record<string, string>>({});
+  const [realStats, setRealStats] = useState<RealStats | null>(null);
+  const [userPosts, setUserPosts] = useState<{ id: string; thumbnail_url: string | null; views: number }[]>([]);
   const [followerCount, setFollowerCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [following, setFollowing] = useState(false);
@@ -162,57 +134,94 @@ export default function UserProfileScreen() {
   const [contentTab, setContentTab] = useState<'posts' | 'streams'>('posts');
 
   useEffect(() => {
-    supabase
-      .from('creator_discover')
-      .select('*')
-      .eq('id', id)
-      .single()
-      .then(async ({ data }) => {
-        let resolved: Creator;
-        if (data) {
-          resolved = data;
-        } else if (paramName) {
-          const handle = (paramHandle ?? paramName).replace(/^@/, '').replace(/\s+/g, '').toLowerCase();
-          resolved = {
-            id,
-            handle,
-            display_name: paramName,
-            total_viewers: 0,
-            platforms: mockPlatformsForId(id),
-            is_live: false,
-            stream_count: 0,
-            last_streamed_at: null,
-          };
-        } else {
-          setLoading(false);
-          return;
-        }
-        setCreator(resolved);
+    async function init() {
+      // Try full profile from profiles table first (has bio)
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('id, display_name, handle, bio, avatar_url')
+        .eq('id', id)
+        .maybeSingle();
 
-        // Fetch platform usernames, real follow state, and follower count in parallel
-        const [platResult, followResult, countResult] = await Promise.all([
-          supabase.from('connected_platforms').select('platform, username').eq('user_id', resolved.id),
-          me ? checkIsFollowing(me.id, resolved.id) : Promise.resolve(false),
-          getFollowerCount(resolved.id),
-        ]);
+      // Fallback to creator_discover if profile not found
+      const { data: discoverData } = profileData ? { data: null } : await supabase
+        .from('creator_discover')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
 
-        const names: Record<string, string> = {};
-        (platResult.data ?? []).forEach((r: { platform: string; username: string | null }) => {
-          if (r.username) names[r.platform] = r.username;
-        });
-        setPlatformUsernames(names);
-        setFollowing(followResult);
-        setFollowerCount(countResult);
-
+      let resolved: Creator;
+      if (profileData) {
+        resolved = {
+          id: profileData.id,
+          handle: (profileData.handle ?? '').replace(/^@/, ''),
+          display_name: profileData.display_name,
+          bio: profileData.bio,
+          total_viewers: 0,
+          platforms: null,
+          is_live: false,
+          stream_count: 0,
+          last_streamed_at: null,
+        };
+      } else if (discoverData) {
+        resolved = discoverData as Creator;
+      } else if (paramName) {
+        const handle = (paramHandle ?? paramName).replace(/^@/, '').replace(/\s+/g, '').toLowerCase();
+        resolved = {
+          id,
+          handle,
+          display_name: paramName,
+          total_viewers: 0,
+          platforms: mockPlatformsForId(id),
+          is_live: false,
+          stream_count: 0,
+          last_streamed_at: null,
+        };
+      } else {
         setLoading(false);
+        return;
+      }
+      setCreator(resolved);
+
+      // Fetch stats, platforms, follow state, and posts in parallel
+      const [platResult, followResult, statsResult, postsResult] = await Promise.all([
+        supabase.from('connected_platforms').select('platform, username').eq('user_id', resolved.id),
+        me ? checkIsFollowing(me.id, resolved.id) : Promise.resolve(false),
+        supabase.from('user_stats').select('*').eq('user_id', resolved.id).maybeSingle(),
+        supabase.from('posts').select('id, thumbnail_url').eq('user_id', resolved.id).eq('status', 'published').order('created_at', { ascending: false }).limit(12),
+      ]);
+
+      const names: Record<string, string> = {};
+      (platResult.data ?? []).forEach((r: { platform: string; username: string | null }) => {
+        if (r.username) names[r.platform] = r.username;
       });
+      setPlatformUsernames(names);
+      setFollowing(followResult);
+
+      if (statsResult.data) {
+        setRealStats(statsResult.data as RealStats);
+        setFollowerCount(statsResult.data.follower_count ?? 0);
+      } else {
+        setFollowerCount(await getFollowerCount(resolved.id));
+      }
+
+      setUserPosts((postsResult.data ?? []).map((p: { id: string; thumbnail_url: string | null }) => ({
+        ...p,
+        views: 0,
+      })));
+
+      setLoading(false);
+    }
+
+    init();
   }, [id, me?.id]);
 
   const grad = creator ? creatorGrad(creator.id) : (['#FF2D87', '#C020E0', '#7B2FFF'] as [string, string, string]);
-  const stats = creator ? getStats(creator.id) : { followers: 0, following: 0, posts: 0 };
-  const bio = creator ? getBio(creator.id) : '';
+  const mockStats = creator ? getStats(creator.id) : { followers: 0, following: 0, posts: 0 };
+  const bio = creator?.bio || (creator ? getBio(creator.id) : '');
   const platforms = (creator?.platforms?.length ? creator.platforms : mockPlatformsForId(creator?.id ?? '')).slice(0, 5);
-  const postCount = Math.max(6, stats.posts % 12 || 9);
+  const displayFollowers = followerCount || realStats?.follower_count || mockStats.followers;
+  const displayFollowing = realStats?.following_count ?? mockStats.following;
+  const displayPosts     = realStats?.post_count ?? userPosts.length;
 
   const handleFollow = async () => {
     if (!me || followLoading) return;
@@ -336,22 +345,22 @@ export default function UserProfileScreen() {
           {/* Stats */}
           <Animated.View entering={FadeInDown.delay(140).duration(350)} style={[styles.statsRow, { borderColor: C.border }]}>
             <View style={styles.stat}>
-              <Text style={[styles.statValue, { color: C.textPrimary }]}>{fmtNum(followerCount || stats.followers)}</Text>
+              <Text style={[styles.statValue, { color: C.textPrimary }]}>{fmtNum(displayFollowers)}</Text>
               <Text style={[styles.statLabel, { color: C.textMuted }]}>Followers</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: C.border }]} />
             <View style={styles.stat}>
-              <Text style={[styles.statValue, { color: C.textPrimary }]}>{fmtNum(stats.following)}</Text>
+              <Text style={[styles.statValue, { color: C.textPrimary }]}>{fmtNum(displayFollowing)}</Text>
               <Text style={[styles.statLabel, { color: C.textMuted }]}>Following</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: C.border }]} />
             <View style={styles.stat}>
-              <Text style={[styles.statValue, { color: C.textPrimary }]}>{creator.stream_count}</Text>
+              <Text style={[styles.statValue, { color: C.textPrimary }]}>{realStats?.stream_count ?? creator.stream_count}</Text>
               <Text style={[styles.statLabel, { color: C.textMuted }]}>Streams</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: C.border }]} />
             <View style={styles.stat}>
-              <Text style={[styles.statValue, { color: C.textPrimary }]}>{stats.posts}</Text>
+              <Text style={[styles.statValue, { color: C.textPrimary }]}>{displayPosts}</Text>
               <Text style={[styles.statLabel, { color: C.textMuted }]}>Posts</Text>
             </View>
           </Animated.View>
@@ -418,9 +427,28 @@ export default function UserProfileScreen() {
         {/* ── Posts grid ── */}
         {contentTab === 'posts' ? (
           <Animated.View entering={FadeInDown.delay(260).duration(350)} style={styles.grid}>
-            {Array.from({ length: postCount }).map((_, i) => (
-              <PostCell key={i} index={i} creatorId={creator.id} C={C} />
-            ))}
+            {userPosts.length > 0 ? userPosts.map((p) => (
+              <TouchableOpacity key={p.id} activeOpacity={0.88}
+                style={{ width: POST_CELL, height: POST_CELL_H, position: 'relative', overflow: 'hidden' }}
+              >
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: '#111' }]} />
+                {p.thumbnail_url
+                  ? <Image source={{ uri: p.thumbnail_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                  : <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+                }
+                <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)']} style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end', padding: 6 }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                    <Ionicons name="play" size={10} color="rgba(255,255,255,0.9)" />
+                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 10, color: '#FFFFFF' }}>0</Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+            )) : (
+              <View style={{ width: '100%', alignItems: 'center', paddingVertical: 48, gap: 10 }}>
+                <Ionicons name="grid-outline" size={36} color={C.textMuted} />
+                <Text style={{ fontFamily: 'Syne-Bold', fontSize: 15, color: C.textPrimary }}>No posts yet</Text>
+              </View>
+            )}
           </Animated.View>
         ) : (
           <View style={[styles.emptyStreams, { borderColor: C.border }]}>

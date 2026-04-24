@@ -294,3 +294,138 @@ left join (
   group by user_id
 ) cp on cp.user_id = pr.id
 order by trending_score desc;
+
+-- ─── Posts status column ────────────────────────────────────────────────────────
+alter table posts add column if not exists status text not null default 'published'
+  check (status in ('draft', 'published', 'archived'));
+
+-- ─── VBT balances ──────────────────────────────────────────────────────────────
+create table if not exists vbt_balances (
+  user_id    uuid primary key references profiles on delete cascade,
+  balance    bigint not null default 0,
+  updated_at timestamptz not null default now()
+);
+alter table vbt_balances enable row level security;
+create policy "Users can view their own balance" on vbt_balances for select using (auth.uid() = user_id);
+create policy "Users can update their own balance" on vbt_balances for update using (auth.uid() = user_id);
+
+-- ─── Conversations (DMs) ───────────────────────────────────────────────────────
+create table if not exists conversations (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table conversations enable row level security;
+create policy "Participants can view conversations"
+  on conversations for select using (
+    exists (select 1 from conversation_participants where conversation_id = id and user_id = auth.uid())
+  );
+
+create table if not exists conversation_participants (
+  conversation_id uuid not null references conversations on delete cascade,
+  user_id         uuid not null references profiles on delete cascade,
+  last_read_at    timestamptz,
+  primary key (conversation_id, user_id)
+);
+alter table conversation_participants enable row level security;
+create policy "Users can view their own participations"
+  on conversation_participants for select using (auth.uid() = user_id);
+create policy "System can insert participants"
+  on conversation_participants for insert with check (true);
+
+create table if not exists messages (
+  id              uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references conversations on delete cascade,
+  sender_id       uuid not null references profiles on delete cascade,
+  content         text not null,
+  created_at      timestamptz not null default now()
+);
+alter table messages enable row level security;
+create policy "Participants can view messages"
+  on messages for select using (
+    exists (select 1 from conversation_participants where conversation_id = messages.conversation_id and user_id = auth.uid())
+  );
+create policy "Participants can send messages"
+  on messages for insert with check (
+    auth.uid() = sender_id and
+    exists (select 1 from conversation_participants where conversation_id = messages.conversation_id and user_id = auth.uid())
+  );
+
+-- Auto-update conversation.updated_at when a new message is sent
+create or replace function touch_conversation()
+returns trigger language plpgsql as $$
+begin
+  update conversations set updated_at = now() where id = new.conversation_id;
+  return new;
+end;
+$$;
+create or replace trigger on_message_inserted
+  after insert on messages for each row execute procedure touch_conversation();
+
+-- Find or create a DM between the caller and another user
+create or replace function get_or_create_dm(other_user_id uuid)
+returns uuid language plpgsql security definer as $$
+declare
+  conv_id uuid;
+begin
+  select cp1.conversation_id into conv_id
+  from conversation_participants cp1
+  join conversation_participants cp2
+    on cp1.conversation_id = cp2.conversation_id
+  where cp1.user_id = auth.uid() and cp2.user_id = other_user_id
+  limit 1;
+
+  if conv_id is null then
+    insert into conversations default values returning id into conv_id;
+    insert into conversation_participants (conversation_id, user_id)
+    values (conv_id, auth.uid()), (conv_id, other_user_id);
+  end if;
+
+  return conv_id;
+end;
+$$;
+
+-- ─── Notifications ──────────────────────────────────────────────────────────────
+create table if not exists notifications (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references profiles on delete cascade,
+  actor_id   uuid references profiles on delete set null,
+  type       text not null check (type in ('like','follow','comment','gift','stream_live')),
+  post_id    uuid references posts on delete cascade,
+  message    text,
+  read       boolean not null default false,
+  created_at timestamptz not null default now()
+);
+alter table notifications enable row level security;
+create policy "Users can view their own notifications"
+  on notifications for select using (auth.uid() = user_id);
+create policy "Users can update their own notifications"
+  on notifications for update using (auth.uid() = user_id);
+create policy "System can insert notifications"
+  on notifications for insert with check (true);
+
+-- ─── User status (24-hour expiring) ───────────────────────────────────────────
+create table if not exists user_status (
+  user_id    uuid primary key references profiles on delete cascade,
+  content    text not null,
+  is_live    boolean not null default false,
+  expires_at timestamptz not null default now() + interval '24 hours',
+  created_at timestamptz not null default now()
+);
+alter table user_status enable row level security;
+create policy "Anyone can view active statuses" on user_status for select using (expires_at > now());
+create policy "Users can manage their own status" on user_status for all using (auth.uid() = user_id);
+
+-- ─── User stats view ────────────────────────────────────────────────────────────
+create or replace view user_stats as
+select
+  p.id as user_id,
+  coalesce(fl.follower_count,  0) as follower_count,
+  coalesce(fg.following_count, 0) as following_count,
+  coalesce(po.post_count,      0) as post_count,
+  coalesce(ss.stream_count,    0) as stream_count
+from profiles p
+left join (select following_id, count(*) as follower_count  from follows group by following_id) fl on fl.following_id = p.id
+left join (select follower_id,  count(*) as following_count from follows group by follower_id)  fg on fg.follower_id  = p.id
+left join (select user_id, count(*) filter (where status = 'published') as post_count from posts group by user_id) po on po.user_id = p.id
+left join (select user_id, count(*) as stream_count from stream_sessions group by user_id) ss on ss.user_id = p.id;

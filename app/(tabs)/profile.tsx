@@ -21,9 +21,12 @@ import { useTheme } from '@/context/ThemeContext';
 import type { AppColors } from '@/constants/themes';
 import { getPlatform, PlatformId } from '@/constants/platforms';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { pickAndUploadAvatar } from '@/lib/avatar';
 import { fetchStreamStats, fetchRecentStreams, StreamSession } from '@/lib/streams';
 import { getRestreamAddChannelUrl } from '@/lib/restream';
+import { getFollowerCount } from '@/lib/feed';
+import { supabase } from '@/lib/supabase';
 import * as WebBrowser from 'expo-web-browser';
 
 const DIRECT_OAUTH_PLATFORMS = new Set(['youtube', 'twitch', 'facebook']);
@@ -144,32 +147,13 @@ const POST_GAP = 2;
 const POST_CELL = Math.floor((SCREEN_W - 40 - POST_GAP * 2) / 3);
 const POST_CELL_H = Math.floor(POST_CELL * 1.35);
 
-const MOCK_POSTS = [
-  { id: '0', views: 12400, live: false },
-  { id: '1', views: 8900,  live: false },
-  { id: '2', views: 45200, live: true  },
-  { id: '3', views: 3100,  live: false },
-  { id: '4', views: 22800, live: false },
-  { id: '5', views: 7600,  live: false },
-  { id: '6', views: 18300, live: false },
-  { id: '7', views: 5400,  live: false },
-];
-
-const MOCK_DRAFTS = [
-  { id: 'd0', views: 0, live: false },
-  { id: 'd1', views: 0, live: false },
-  { id: 'd2', views: 0, live: false },
-  { id: 'd3', views: 0, live: false },
-];
-
-const MOCK_REPOSTS = [
-  { id: 'r0', views: 91200, live: false },
-  { id: 'r1', views: 34500, live: false },
-  { id: 'r2', views: 7800,  live: false },
-  { id: 'r3', views: 22100, live: false },
-  { id: 'r4', views: 5600,  live: false },
-  { id: 'r5', views: 14300, live: false },
-];
+interface PostRow {
+  id: string;
+  thumbnail_url: string | null;
+  status: string;
+  views: number;
+  created_at: string;
+}
 
 function fmtViews(v: number) {
   return v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(v);
@@ -179,69 +163,52 @@ type ContentTab = 'posts' | 'drafts' | 'reposts' | 'streams';
 
 // ─── Post grid ────────────────────────────────────────────────────────────────
 
-// Deterministic picsum seeds so images don't change between renders
-const IMG_SEEDS = [
-  'creator-stream-1','creator-stream-2','creator-stream-3','creator-stream-4',
-  'creator-stream-5','creator-stream-6','creator-stream-7','creator-stream-8',
-  'draft-clip-1','draft-clip-2','draft-clip-3','draft-clip-4',
-  'repost-vid-1','repost-vid-2','repost-vid-3','repost-vid-4','repost-vid-5','repost-vid-6',
-];
-
 function PostGrid({
-  items, isDraft, isRepost, styles, C, imgOffset = 0,
+  posts, isDraft, styles, C,
 }: {
-  items: { id: string; views: number; live: boolean }[];
+  posts: PostRow[];
   isDraft?: boolean;
-  isRepost?: boolean;
   styles: ReturnType<typeof makeStyles>;
   C: AppColors;
-  imgOffset?: number;
 }) {
+  if (posts.length === 0) return null;
   return (
     <View style={styles.postsGrid}>
-      {items.map((post, i) => {
-        const seed = IMG_SEEDS[(imgOffset + i) % IMG_SEEDS.length];
-        const imgUri = `https://picsum.photos/seed/${seed}/400/560`;
-        return (
-          <TouchableOpacity
-            key={post.id}
-            activeOpacity={0.85}
-            style={[styles.postCell, { width: POST_CELL, height: POST_CELL_H }]}
-          >
-            {/* Dark fallback while loading */}
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#111' }]} />
-            <Image source={{ uri: imgUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-            {/* Bottom overlay for text legibility */}
+      {posts.map((post) => (
+        <TouchableOpacity
+          key={post.id}
+          activeOpacity={0.85}
+          style={[styles.postCell, { width: POST_CELL, height: POST_CELL_H }]}
+        >
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#111' }]} />
+          {post.thumbnail_url ? (
+            <Image source={{ uri: post.thumbnail_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          ) : (
             <LinearGradient
-              colors={['transparent', 'rgba(0,0,0,0.65)']}
-              style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]}
-            >
-              {post.live && (
-                <View style={styles.postLiveBadge}>
-                  <Text style={styles.postLiveText}>LIVE</Text>
-                </View>
-              )}
-              {isDraft && (
-                <View style={[styles.postLiveBadge, { backgroundColor: 'rgba(0,0,0,0.72)' }]}>
-                  <Text style={styles.postLiveText}>DRAFT</Text>
-                </View>
-              )}
-              {isRepost && (
-                <View style={styles.postRepostBadge}>
-                  <Ionicons name="repeat" size={11} color="#FFFFFF" />
-                </View>
-              )}
-              <View style={styles.postViewsRow}>
-                <Ionicons name={isDraft ? 'time-outline' : 'eye'} size={10} color="rgba(255,255,255,0.9)" />
-                <Text style={styles.postViewsText}>{isDraft ? 'Draft' : fmtViews(post.views)}</Text>
+              colors={['#1a1a2e', '#16213e', '#0f3460']}
+              style={StyleSheet.absoluteFill}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            />
+          )}
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.65)']}
+            style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]}
+          >
+            {isDraft && (
+              <View style={[styles.postLiveBadge, { backgroundColor: 'rgba(0,0,0,0.72)' }]}>
+                <Text style={styles.postLiveText}>DRAFT</Text>
               </View>
-            </LinearGradient>
-            <View style={styles.postPlayOverlay}>
-              <Ionicons name="play" size={26} color="rgba(255,255,255,0.8)" />
+            )}
+            <View style={styles.postViewsRow}>
+              <Ionicons name={isDraft ? 'time-outline' : 'eye'} size={10} color="rgba(255,255,255,0.9)" />
+              <Text style={styles.postViewsText}>{isDraft ? 'Draft' : fmtViews(post.views)}</Text>
             </View>
-          </TouchableOpacity>
-        );
-      })}
+          </LinearGradient>
+          <View style={styles.postPlayOverlay}>
+            <Ionicons name="play" size={26} color="rgba(255,255,255,0.8)" />
+          </View>
+        </TouchableOpacity>
+      ))}
     </View>
   );
 }
@@ -251,6 +218,7 @@ function PostGrid({
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { profile, platforms, togglePlatform, syncPlatformsFromRestream, restreamToken, connectPlatformOAuth } = useApp();
+  const { user } = useAuth();
   const { colors: C } = useTheme();
   const styles = useMemo(() => makeStyles(C), [C]);
   const [oauthTarget, setOauthTarget] = useState<PlatformId | null>(null);
@@ -261,13 +229,48 @@ export default function ProfileScreen() {
   const [stats, setStats] = useState({ totalStreams: 0, totalViewers: 0, totalEarnedUsd: 0 });
   const [recentStreams, setRecentStreams] = useState<StreamSession[]>([]);
   const [contentTab, setContentTab] = useState<ContentTab>('posts');
+  const [posts, setPosts] = useState<PostRow[]>([]);
+  const [drafts, setDrafts] = useState<PostRow[]>([]);
+  const [vbtBalance, setVbtBalance] = useState<number>(0);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
 
   const connectedCount = platforms.filter((p) => p.connected).length;
 
   useEffect(() => {
     fetchStreamStats().then(setStats);
     fetchRecentStreams(4).then(setRecentStreams);
-  }, []);
+    if (!user) return;
+
+    // Real posts
+    supabase
+      .from('posts')
+      .select('id, thumbnail_url, status, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        const rows = (data ?? []) as PostRow[];
+        setPosts(rows.filter((p) => p.status === 'published').map((p) => ({ ...p, views: 0 })));
+        setDrafts(rows.filter((p) => p.status === 'draft').map((p) => ({ ...p, views: 0 })));
+      });
+
+    // VBT balance
+    supabase
+      .from('vbt_balances')
+      .select('balance')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => setVbtBalance(data?.balance ?? 0));
+
+    // Follower / following counts
+    Promise.all([
+      supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id),
+      supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id),
+    ]).then(([frs, fng]) => {
+      setFollowerCount(frs.count ?? 0);
+      setFollowingCount(fng.count ?? 0);
+    });
+  }, [user?.id]);
 
   const handleAvatarPress = async () => {
     setUploadingAvatar(true);
@@ -346,12 +349,12 @@ export default function ProfileScreen() {
             {/* Stats */}
             <View style={styles.statsRow}>
               <TouchableOpacity style={styles.stat} activeOpacity={0.7} onPress={() => router.push('/followers')}>
-                <Text style={styles.statValue}>248</Text>
+                <Text style={styles.statValue}>{followerCount >= 1000 ? `${(followerCount / 1000).toFixed(1)}K` : followerCount}</Text>
                 <Text style={styles.statLabel}>Followers</Text>
               </TouchableOpacity>
               <View style={styles.statDivider} />
               <TouchableOpacity style={styles.stat} activeOpacity={0.7} onPress={() => router.push('/following')}>
-                <Text style={styles.statValue}>71</Text>
+                <Text style={styles.statValue}>{followingCount}</Text>
                 <Text style={styles.statLabel}>Following</Text>
               </TouchableOpacity>
               <View style={styles.statDivider} />
@@ -376,7 +379,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.tokenInfo}>
                 <Text style={styles.tokenLabel}>Viba Balance</Text>
-                <Text style={styles.tokenAmount}>2,450 VBT</Text>
+                <Text style={styles.tokenAmount}>{vbtBalance.toLocaleString()} VBT</Text>
               </View>
             </View>
             <View style={styles.tokenRight}>
@@ -463,11 +466,17 @@ export default function ProfileScreen() {
         {/* Content area */}
         <Animated.View entering={FadeInDown.delay(340).duration(400)}>
           {contentTab === 'posts' && (
-            <PostGrid items={MOCK_POSTS} styles={styles} C={C} imgOffset={0} />
+            posts.length > 0
+              ? <PostGrid posts={posts} styles={styles} C={C} />
+              : <View style={styles.emptyContent}>
+                  <Ionicons name="grid-outline" size={36} color={C.textMuted} />
+                  <Text style={[styles.emptyTitle, { color: C.textPrimary }]}>No posts yet</Text>
+                  <Text style={[styles.emptySub, { color: C.textMuted }]}>Your published content will appear here.</Text>
+                </View>
           )}
           {contentTab === 'drafts' && (
-            MOCK_DRAFTS.length > 0
-              ? <PostGrid items={MOCK_DRAFTS} isDraft styles={styles} C={C} imgOffset={8} />
+            drafts.length > 0
+              ? <PostGrid posts={drafts} isDraft styles={styles} C={C} />
               : <View style={styles.emptyContent}>
                   <Ionicons name="document-text-outline" size={36} color={C.textMuted} />
                   <Text style={[styles.emptyTitle, { color: C.textPrimary }]}>No drafts yet</Text>
@@ -475,13 +484,11 @@ export default function ProfileScreen() {
                 </View>
           )}
           {contentTab === 'reposts' && (
-            MOCK_REPOSTS.length > 0
-              ? <PostGrid items={MOCK_REPOSTS} isRepost styles={styles} C={C} imgOffset={12} />
-              : <View style={styles.emptyContent}>
-                  <Ionicons name="repeat-outline" size={36} color={C.textMuted} />
-                  <Text style={[styles.emptyTitle, { color: C.textPrimary }]}>No reposts yet</Text>
-                  <Text style={[styles.emptySub, { color: C.textMuted }]}>Videos you repost will appear here.</Text>
-                </View>
+            <View style={styles.emptyContent}>
+              <Ionicons name="repeat-outline" size={36} color={C.textMuted} />
+              <Text style={[styles.emptyTitle, { color: C.textPrimary }]}>No reposts yet</Text>
+              <Text style={[styles.emptySub, { color: C.textMuted }]}>Videos you repost will appear here.</Text>
+            </View>
           )}
           {contentTab === 'streams' && (
             <View style={styles.historyList}>

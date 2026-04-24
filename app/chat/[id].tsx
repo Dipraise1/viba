@@ -10,6 +10,7 @@ import {
   Platform,
   Pressable,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,6 +30,16 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/context/ThemeContext';
 import type { AppColors } from '@/constants/themes';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
+import {
+  getOrCreateDm,
+  getMessages,
+  sendMessage,
+  subscribeToMessages,
+  markConversationRead,
+  type ChatMessage,
+} from '@/lib/messages';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,85 +54,52 @@ interface Message {
   reaction?: string;
 }
 
-interface ChatContact {
+interface ContactProfile {
   id: string;
-  name: string;
+  display_name: string;
   handle: string;
-  isLive: boolean;
-  isOnline: boolean;
-  gradSeed: number;
+  avatar_url: string | null;
+  is_live?: boolean;
 }
 
-// ─── Static contact data ──────────────────────────────────────────────────────
-
-const CONTACTS: Record<string, ChatContact> = {
-  c1: { id: 'c1', name: 'Jay Wave',       handle: '@jaywave',      isLive: true,  isOnline: true,  gradSeed: 0 },
-  c2: { id: 'c2', name: 'Maya Creates',   handle: '@maya.creates', isLive: false, isOnline: true,  gradSeed: 1 },
-  c3: { id: 'c3', name: 'StreamLord',     handle: '@streamlord',   isLive: true,  isOnline: true,  gradSeed: 2 },
-  c4: { id: 'c4', name: 'TechVibes99',    handle: '@techvibes99',  isLive: false, isOnline: false, gradSeed: 3 },
-  c5: { id: 'c5', name: 'Ghost Vibes',    handle: '@ghostvibes',   isLive: false, isOnline: false, gradSeed: 4 },
-  c6: { id: 'c6', name: 'Dre Art',        handle: '@dre_art',      isLive: false, isOnline: false, gradSeed: 5 },
-};
-
-const DEFAULT_CONTACT: ChatContact = {
-  id: 'unknown', name: 'User', handle: '@user', isLive: false, isOnline: false, gradSeed: 0,
-};
-
-// ─── Mock conversations ───────────────────────────────────────────────────────
-
-const CONVOS: Record<string, Message[]> = {
-  c1: [
-    { id: 'm1',  text: 'That stream was insane bro 🔥',                             sender: 'them', time: '2:28 PM' },
-    { id: 'm2',  text: 'The part where you hit that combo had me screaming 😭',      sender: 'them', time: '2:28 PM' },
-    { id: 'm3',  text: 'Haha thanks!! I honestly didn\'t think it would go that well', sender: 'me', time: '2:30 PM' },
-    { id: 'm4',  text: 'I was so nervous for the first 20 mins lol',                 sender: 'me',   time: '2:30 PM' },
-    { id: 'm5',  text: 'Couldn\'t even tell, you were so locked in',                 sender: 'them', time: '2:31 PM' },
-    { id: 'm6',  text: 'When\'s the next one?',                                      sender: 'them', time: '2:32 PM' },
-    { id: 'm7',  text: 'Thinking Friday night around 8PM',                           sender: 'me',   time: '2:33 PM' },
-    { id: 'm8',  text: 'Maybe do a gaming night + reaction content',                 sender: 'me',   time: '2:33 PM' },
-    { id: 'm9',  text: 'Bet I\'ll be there 👀🔥',                                   sender: 'them', time: '2:34 PM' },
-    { id: 'm10', text: 'Also — would you be down for a collab?',                     sender: 'them', time: '2:35 PM' },
-    { id: 'm11', text: 'We could do a joint stream next month, reach both audiences', sender: 'them', time: '2:35 PM' },
-    { id: 'm12', text: 'YESSS that sounds so good',                                  sender: 'me',   time: '2:36 PM' },
-    { id: 'm13', text: 'Let me know your schedule and we\'ll plan it out',           sender: 'me',   time: '2:36 PM', read: true },
-    { id: 'm14', text: 'Perfect I\'ll DM you a doc with potential dates 🙌',         sender: 'them', time: '2:37 PM' },
-  ],
-  c2: [
-    { id: 'm1', text: 'Hey! Love your content 💜',                                  sender: 'them', time: 'Yesterday' },
-    { id: 'm2', text: 'Thank you so much!! That means a lot 🥹',                    sender: 'me',   time: 'Yesterday' },
-    { id: 'm3', text: 'I actually had an idea I wanted to run by you',              sender: 'them', time: 'Yesterday' },
-    { id: 'm4', text: 'Can we collab next week?',                                    sender: 'them', time: '15m ago', read: true },
-  ],
-  c3: [
-    { id: 'm1', text: 'Sent you a gift 🎁',                sender: 'them', time: '1h ago' },
-    { id: 'm2', text: 'Omg thank you so much!! 😭❤️',      sender: 'me',   time: '1h ago' },
-    { id: 'm3', text: 'You deserve it, keep going!',       sender: 'them', time: '58m ago', read: true },
-  ],
-  c4: [
-    { id: 'm1', text: 'What\'s your stream setup?',               sender: 'them', time: '3h ago' },
-    { id: 'm2', text: 'I use the Elgato 4K60 Pro + Rode NT-USB', sender: 'me',   time: '3h ago' },
-    { id: 'm3', text: 'For lighting I have 2x Elgato Key Light',  sender: 'me',   time: '3h ago', read: true },
-    { id: 'm4', text: 'That\'s a solid setup, nice!',             sender: 'them', time: '2h ago' },
-  ],
-};
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const GRADIENT_POOL: [string, string][] = [
-  ['#FF2D87', '#7B2FFF'],
-  ['#FF6B35', '#C020E0'],
-  ['#00D4AA', '#0094FF'],
-  ['#FFD700', '#FF6B35'],
-  ['#00C9FF', '#7B2FFF'],
-  ['#FC466B', '#3F5EFB'],
+  ['#FF2D87', '#7B2FFF'], ['#FF6B35', '#C020E0'],
+  ['#00D4AA', '#0094FF'], ['#FFD700', '#FF6B35'],
+  ['#00C9FF', '#7B2FFF'], ['#FC466B', '#3F5EFB'],
 ];
 
 const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 
-function avatarGrad(seed: number): [string, string] {
-  return GRADIENT_POOL[seed % GRADIENT_POOL.length];
+function avatarGrad(id: string): [string, string] {
+  return GRADIENT_POOL[(id.charCodeAt(0) || 0) % GRADIENT_POOL.length];
 }
 
 function initials(name: string) {
-  return name.split(' ').map((w) => w[0] ?? '').join('').toUpperCase().slice(0, 2);
+  return name.split(' ').map((w) => w[0] ?? '').join('').toUpperCase().slice(0, 2) || '??';
+}
+
+function fmtTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffH = Math.floor(diffMins / 60);
+  if (diffH < 24) return `${diffH}h ago`;
+  return d.toLocaleDateString();
+}
+
+function toUiMessage(m: ChatMessage, myId: string): Message {
+  return {
+    id: m.id,
+    text: m.content,
+    sender: m.sender_id === myId ? 'me' : 'them',
+    time: fmtTime(m.created_at),
+    read: m.sender_id === myId,
+  };
 }
 
 // ─── Typing indicator ─────────────────────────────────────────────────────────
@@ -140,9 +118,7 @@ function TypingIndicator({ C }: { C: AppColors }) {
         );
       }, delay);
     };
-    bounce(dot1, 0);
-    bounce(dot2, 150);
-    bounce(dot3, 300);
+    bounce(dot1, 0); bounce(dot2, 150); bounce(dot3, 300);
   }, []);
 
   const d1 = useAnimatedStyle(() => ({ transform: [{ translateY: dot1.value }] }));
@@ -191,34 +167,24 @@ const reaS = StyleSheet.create({
 function MessageBubble({
   msg, prevSender, nextSender, contact, C, onLongPress,
 }: {
-  msg: Message;
-  prevSender: Sender | null;
-  nextSender: Sender | null;
-  contact: ChatContact;
-  C: AppColors;
-  onLongPress: (id: string) => void;
+  msg: Message; prevSender: Sender | null; nextSender: Sender | null;
+  contact: ContactProfile; C: AppColors; onLongPress: (id: string) => void;
 }) {
   const isMe = msg.sender === 'me';
   const isFirstInGroup = prevSender !== msg.sender;
   const isLastInGroup = nextSender !== msg.sender;
-
-  const grad = avatarGrad(contact.gradSeed);
+  const grad = avatarGrad(contact.id);
 
   return (
     <Animated.View
       entering={FadeInDown.duration(200)}
-      style={[
-        bubS.row,
-        isMe ? bubS.rowMe : bubS.rowThem,
-        !isLastInGroup && { marginBottom: 2 },
-      ]}
+      style={[bubS.row, isMe ? bubS.rowMe : bubS.rowThem, !isLastInGroup && { marginBottom: 2 }]}
     >
-      {/* Them avatar — only on last message in group */}
       {!isMe && (
         <View style={bubS.avatarSlot}>
           {isLastInGroup ? (
             <LinearGradient colors={grad} style={bubS.avatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-              <Text style={bubS.avatarText}>{initials(contact.name)}</Text>
+              <Text style={bubS.avatarText}>{initials(contact.display_name)}</Text>
             </LinearGradient>
           ) : (
             <View style={bubS.avatarPlaceholder} />
@@ -236,36 +202,22 @@ function MessageBubble({
               ? [bubS.bubbleMe, { borderBottomRightRadius: isLastInGroup ? 6 : 18 }]
               : [bubS.bubbleThem, { backgroundColor: C.bgCard, borderColor: C.border, borderBottomLeftRadius: isLastInGroup ? 6 : 18 }],
             !isLastInGroup && !isMe && { borderBottomLeftRadius: 18 },
-            !isLastInGroup && isMe && { borderBottomRightRadius: 18 },
+            !isLastInGroup && isMe  && { borderBottomRightRadius: 18 },
           ]}
         >
           {isMe && (
-            <LinearGradient
-              colors={['#FF2D87', '#C020E0', '#7B2FFF']}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            />
+            <LinearGradient colors={['#FF2D87', '#C020E0', '#7B2FFF']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
           )}
-          <Text style={[bubS.text, isMe ? bubS.textMe : { color: C.textPrimary }]}>
-            {msg.text}
-          </Text>
+          <Text style={[bubS.text, isMe ? bubS.textMe : { color: C.textPrimary }]}>{msg.text}</Text>
           {msg.reaction && (
-            <View style={bubS.reactionBubble}>
-              <Text style={bubS.reactionText}>{msg.reaction}</Text>
-            </View>
+            <View style={bubS.reactionBubble}><Text style={bubS.reactionText}>{msg.reaction}</Text></View>
           )}
         </Pressable>
-
-        {/* Time + read status — only on last in group */}
         {isLastInGroup && (
           <View style={[bubS.meta, isMe && bubS.metaMe]}>
             <Text style={[bubS.metaText, { color: C.textMuted }]}>{msg.time}</Text>
-            {isMe && msg.read && (
-              <Text style={[bubS.readText, { color: C.pink }]}>Read</Text>
-            )}
-            {isMe && !msg.read && (
-              <Ionicons name="checkmark-done-outline" size={13} color={C.textMuted} />
-            )}
+            {isMe && msg.read && <Text style={[bubS.readText, { color: C.pink }]}>Sent</Text>}
+            {isMe && !msg.read && <Ionicons name="checkmark-done-outline" size={13} color={C.textMuted} />}
           </View>
         )}
       </View>
@@ -299,61 +251,92 @@ const bubS = StyleSheet.create({
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function ChatScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, name: paramName, handle: paramHandle } = useLocalSearchParams<{ id: string; name?: string; handle?: string }>();
   const insets = useSafeAreaInsets();
   const { colors: C } = useTheme();
+  const { user } = useAuth();
   const styles = useMemo(() => makeStyles(C), [C]);
 
-  const contact = CONTACTS[id] ?? DEFAULT_CONTACT;
-  const grad = avatarGrad(contact.gradSeed);
-
-  const [messages, setMessages] = useState<Message[]>(
-    CONVOS[id] ?? [{ id: 'm0', text: 'Hey! 👋', sender: 'them', time: 'Just now' }]
-  );
+  const [contact, setContact] = useState<ContactProfile>({
+    id,
+    display_name: paramName ?? 'User',
+    handle: paramHandle ?? '@user',
+    avatar_url: null,
+  });
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
-  const [typing, setTyping] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
   const [reactionTarget, setReactionTarget] = useState<string | null>(null);
 
   const listRef = useRef<FlatList>(null);
-  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Simulate "them" typing after sending a message
-  const simulateTyping = () => {
-    setTyping(true);
-    typingTimerRef.current = setTimeout(() => {
-      setTyping(false);
-      const replies = [
-        'Sounds great! 🙌', 'Haha love that', 'For real!!', 'Let\'s do it 🔥',
-        'I\'m in 👀', 'That\'s 🔥🔥', 'Yesss!!', 'Ok ok I see you 😂',
-      ];
-      const reply: Message = {
-        id: `m${Date.now()}`,
-        text: replies[Math.floor(Math.random() * replies.length)],
-        sender: 'them',
-        time: 'Just now',
-      };
-      setMessages((prev) => [...prev, reply]);
-    }, 2000 + Math.random() * 1500);
-  };
-
+  // Load contact profile + conversation
   useEffect(() => {
-    return () => { if (typingTimerRef.current) clearTimeout(typingTimerRef.current); };
-  }, []);
+    if (!user || !id) return;
 
-  const send = () => {
-    if (!text.trim()) return;
+    async function init() {
+      // Fetch contact profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, display_name, handle, avatar_url')
+        .eq('id', id)
+        .maybeSingle();
+      if (profile) setContact(profile as ContactProfile);
+
+      // Get or create DM conversation
+      try {
+        const convId = await getOrCreateDm(id);
+        setConversationId(convId);
+
+        // Load existing messages
+        const msgs = await getMessages(convId);
+        setMessages(msgs.map((m) => toUiMessage(m, user!.id)));
+        await markConversationRead(convId);
+      } catch (e) {
+        console.warn('Chat init error', e);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    init();
+  }, [id, user?.id]);
+
+  // Real-time subscription
+  useEffect(() => {
+    if (!conversationId || !user) return;
+    const unsub = subscribeToMessages(conversationId, (msg) => {
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, toUiMessage(msg, user.id)];
+      });
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
+      if (msg.sender_id !== user.id) markConversationRead(conversationId);
+    });
+    return unsub;
+  }, [conversationId, user?.id]);
+
+  const send = useCallback(async () => {
+    if (!text.trim() || !conversationId || sending) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newMsg: Message = {
-      id: `m${Date.now()}`,
-      text: text.trim(),
-      sender: 'me',
-      time: 'Just now',
-    };
-    setMessages((prev) => [...prev, newMsg]);
+    const content = text.trim();
     setText('');
-    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
-    simulateTyping();
-  };
+    setSending(true);
+    try {
+      const sent = await sendMessage(conversationId, content);
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === sent.id)) return prev;
+        return [...prev, toUiMessage(sent, user!.id)];
+      });
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
+    } catch (e) {
+      console.warn('Send error', e);
+    } finally {
+      setSending(false);
+    }
+  }, [text, conversationId, sending, user?.id]);
 
   const handleReaction = (emoji: string) => {
     if (!reactionTarget) return;
@@ -365,41 +348,33 @@ export default function ChatScreen() {
     const prev = index > 0 ? messages[index - 1].sender : null;
     const next = index < messages.length - 1 ? messages[index + 1].sender : null;
     return (
-      <MessageBubble
-        msg={item}
-        prevSender={prev}
-        nextSender={next}
-        contact={contact}
-        C={C}
-        onLongPress={setReactionTarget}
-      />
+      <MessageBubble msg={item} prevSender={prev} nextSender={next} contact={contact} C={C} onLongPress={setReactionTarget} />
     );
   }, [messages, contact, C]);
+
+  const grad = avatarGrad(contact.id);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: C.border }]}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          activeOpacity={0.7}
+        <TouchableOpacity style={styles.backBtn} activeOpacity={0.7}
           onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/activity')}
         >
           <Ionicons name="chevron-back" size={24} color={C.textPrimary} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.headerCenter} activeOpacity={0.85} onPress={() => router.push({ pathname: '/user/[id]', params: { id: contact.id, name: contact.name, handle: contact.handle } } as any)}>
+        <TouchableOpacity style={styles.headerCenter} activeOpacity={0.85}
+          onPress={() => router.push({ pathname: '/user/[id]', params: { id: contact.id, name: contact.display_name, handle: contact.handle } } as any)}
+        >
           <View style={styles.headerAvatarWrap}>
             <LinearGradient colors={grad} style={styles.headerAvatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-              <Text style={styles.headerAvatarText}>{initials(contact.name)}</Text>
+              <Text style={styles.headerAvatarText}>{initials(contact.display_name)}</Text>
             </LinearGradient>
-            {contact.isOnline && <View style={[styles.onlineDot, { borderColor: C.bg }]} />}
           </View>
           <View style={styles.headerMeta}>
-            <Text style={[styles.headerName, { color: C.textPrimary }]}>{contact.name}</Text>
-            <Text style={[styles.headerSub, { color: contact.isLive ? '#FF2D87' : C.textMuted }]}>
-              {contact.isLive ? '🔴 Live now' : contact.isOnline ? 'Online' : 'Offline'}
-            </Text>
+            <Text style={[styles.headerName, { color: C.textPrimary }]}>{contact.display_name}</Text>
+            <Text style={[styles.headerSub, { color: C.textMuted }]}>@{contact.handle?.replace(/^@/, '')}</Text>
           </View>
         </TouchableOpacity>
 
@@ -413,69 +388,68 @@ export default function ChatScreen() {
         </View>
       </View>
 
-      {/* Messages list */}
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
-      >
-        <FlatList
-          ref={listRef}
-          data={messages}
-          renderItem={renderItem}
-          keyExtractor={(m) => m.id}
-          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 12 }]}
-          showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
-          ListFooterComponent={typing ? <TypingIndicator C={C} /> : null}
-        />
-
-        {/* Input bar */}
-        <View style={[styles.inputBar, { borderTopColor: C.border, paddingBottom: insets.bottom + 10, backgroundColor: C.bg }]}>
-          <TouchableOpacity style={styles.inputIcon} activeOpacity={0.7} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
-            <Ionicons name="happy-outline" size={24} color={C.textMuted} />
-          </TouchableOpacity>
-
-          <View style={[styles.inputWrap, { backgroundColor: C.bgCard, borderColor: C.border }]}>
-            <TextInput
-              style={[styles.input, { color: C.textPrimary }]}
-              placeholder="Message…"
-              placeholderTextColor={C.textMuted}
-              value={text}
-              onChangeText={setText}
-              multiline
-              returnKeyType="default"
-            />
-            <TouchableOpacity activeOpacity={0.7} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
-              <Ionicons name="image-outline" size={21} color={C.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          {text.trim() ? (
-            <TouchableOpacity onPress={send} activeOpacity={0.85} style={styles.sendBtn}>
-              <LinearGradient
-                colors={['#FF2D87', '#7B2FFF']}
-                style={styles.sendBtnGrad}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-              >
-                <Ionicons name="send" size={17} color="#FFFFFF" />
-              </LinearGradient>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.inputIcon} activeOpacity={0.7} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
-              <Ionicons name="mic-outline" size={24} color={C.textMuted} />
-            </TouchableOpacity>
-          )}
+      {loading ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color={C.pink} size="large" />
         </View>
-      </KeyboardAvoidingView>
+      ) : (
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+          <FlatList
+            ref={listRef}
+            data={messages}
+            renderItem={renderItem}
+            keyExtractor={(m) => m.id}
+            contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 12 }]}
+            showsVerticalScrollIndicator={false}
+            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+            ListEmptyComponent={
+              <View style={styles.emptyWrap}>
+                <LinearGradient colors={grad} style={styles.emptyAvatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                  <Text style={styles.emptyAvatarText}>{initials(contact.display_name)}</Text>
+                </LinearGradient>
+                <Text style={[styles.emptyName, { color: C.textPrimary }]}>{contact.display_name}</Text>
+                <Text style={[styles.emptySub, { color: C.textMuted }]}>Say hi to start the conversation!</Text>
+              </View>
+            }
+          />
 
-      {/* Reaction picker */}
-      <ReactionPicker
-        visible={!!reactionTarget}
-        onPick={handleReaction}
-        onClose={() => setReactionTarget(null)}
-        C={C}
-      />
+          {/* Input bar */}
+          <View style={[styles.inputBar, { borderTopColor: C.border, paddingBottom: insets.bottom + 10, backgroundColor: C.bg }]}>
+            <TouchableOpacity style={styles.inputIcon} activeOpacity={0.7} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
+              <Ionicons name="happy-outline" size={24} color={C.textMuted} />
+            </TouchableOpacity>
+            <View style={[styles.inputWrap, { backgroundColor: C.bgCard, borderColor: C.border }]}>
+              <TextInput
+                style={[styles.input, { color: C.textPrimary }]}
+                placeholder="Message…"
+                placeholderTextColor={C.textMuted}
+                value={text}
+                onChangeText={setText}
+                multiline
+                returnKeyType="default"
+              />
+              <TouchableOpacity activeOpacity={0.7} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
+                <Ionicons name="image-outline" size={21} color={C.textMuted} />
+              </TouchableOpacity>
+            </View>
+            {text.trim() ? (
+              <TouchableOpacity onPress={send} activeOpacity={0.85} style={styles.sendBtn} disabled={sending}>
+                <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={styles.sendBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                  {sending
+                    ? <ActivityIndicator size="small" color="#FFF" />
+                    : <Ionicons name="send" size={17} color="#FFFFFF" />}
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.inputIcon} activeOpacity={0.7} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
+                <Ionicons name="mic-outline" size={24} color={C.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      )}
+
+      <ReactionPicker visible={!!reactionTarget} onPick={handleReaction} onClose={() => setReactionTarget(null)} C={C} />
     </View>
   );
 }
@@ -483,37 +457,29 @@ export default function ChatScreen() {
 function makeStyles(C: AppColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: C.bg },
-    header: {
-      flexDirection: 'row', alignItems: 'center',
-      paddingHorizontal: 6, paddingVertical: 10,
-      borderBottomWidth: 1,
-    },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, borderBottomWidth: 1, gap: 4 },
     backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-    headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+    headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: 4 },
     headerAvatarWrap: { position: 'relative' },
     headerAvatar: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
     headerAvatarText: { fontFamily: 'Syne-Bold', fontSize: 13, color: '#FFFFFF' },
-    onlineDot: { position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: '#00D4AA', borderWidth: 2 },
+    onlineDot: { position: 'absolute', bottom: -2, right: -2, width: 12, height: 12, borderRadius: 6, backgroundColor: '#00D4AA', borderWidth: 2 },
     headerMeta: { gap: 1 },
     headerName: { fontFamily: 'DMSans-Bold', fontSize: 15 },
     headerSub: { fontFamily: 'DMSans-Regular', fontSize: 12 },
     headerActions: { flexDirection: 'row', gap: 2 },
-    headerIconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+    headerIconBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
     listContent: { paddingTop: 16 },
-    inputBar: {
-      flexDirection: 'row', alignItems: 'flex-end',
-      paddingHorizontal: 8, paddingTop: 10,
-      borderTopWidth: 1, gap: 6,
-    },
-    inputIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-    inputWrap: {
-      flex: 1, flexDirection: 'row', alignItems: 'flex-end',
-      borderRadius: 22, borderWidth: 1,
-      paddingHorizontal: 14, paddingVertical: 9, gap: 8,
-      minHeight: 42,
-    },
+    emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 10 },
+    emptyAvatar: { width: 72, height: 72, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+    emptyAvatarText: { fontFamily: 'Syne-ExtraBold', fontSize: 24, color: '#FFF' },
+    emptyName: { fontFamily: 'Syne-Bold', fontSize: 18 },
+    emptySub: { fontFamily: 'DMSans-Regular', fontSize: 14 },
+    inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 10, borderTopWidth: 1 },
+    inputIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+    inputWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 22, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 8, minHeight: 42 },
     input: { flex: 1, fontFamily: 'DMSans-Regular', fontSize: 15, maxHeight: 100, padding: 0 },
-    sendBtn: { width: 40, height: 40, flexShrink: 0 },
-    sendBtnGrad: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+    sendBtn: { width: 40, height: 40 },
+    sendBtnGrad: { flex: 1, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   });
 }

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { router } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -22,6 +25,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/context/ThemeContext';
 import type { AppColors } from '@/constants/themes';
+import { getNotifications, getFollowingStatuses, markNotificationRead, type AppNotification, type UserStatus } from '@/lib/activityService';
+import { getConversations, type ConversationPreview } from '@/lib/messages';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +36,7 @@ interface ActivityItem {
   id: string;
   type: ActivityType;
   actor: string;
+  actorId: string;
   actorHandle: string;
   text: string;
   time: string;
@@ -39,7 +45,7 @@ interface ActivityItem {
 }
 
 interface ChatItem {
-  id: string;
+  id: string;         // other_user_id — used for navigation to /chat/{id}
   name: string;
   handle: string;
   lastMessage: string;
@@ -48,30 +54,6 @@ interface ChatItem {
   isLive: boolean;
   gradSeed: number;
 }
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-
-const MOCK_ACTIVITY: ActivityItem[] = [
-  { id: 'a1', type: 'follow', actor: 'Jay Wave', actorHandle: 'jaywave', text: 'started following you', time: '2m', read: false, gradSeed: 0 },
-  { id: 'a2', type: 'like', actor: 'Maya Creates', actorHandle: 'maya.creates', text: 'liked your post', time: '5m', read: false, gradSeed: 1 },
-  { id: 'a3', type: 'gift', actor: 'StreamLord', actorHandle: 'streamlord', text: 'sent you a Rose × 5', time: '12m', read: false, gradSeed: 2 },
-  { id: 'a4', type: 'comment', actor: 'TechVibes99', actorHandle: 'techvibes99', text: 'commented: "This stream was insane 🔥"', time: '1h', read: true, gradSeed: 3 },
-  { id: 'a5', type: 'follow', actor: 'Ghost Vibes', actorHandle: 'ghostvibes', text: 'started following you', time: '1h', read: true, gradSeed: 4 },
-  { id: 'a6', type: 'like', actor: 'Dre Art', actorHandle: 'dre_art', text: 'liked your video', time: '3h', read: true, gradSeed: 5 },
-  { id: 'a7', type: 'mention', actor: 'Noodles Fan', actorHandle: 'noodles_fan', text: 'mentioned you in a comment', time: '5h', read: true, gradSeed: 6 },
-  { id: 'a8', type: 'live', actor: 'Kira Moon', actorHandle: 'kiramoon', text: 'just went live — tune in!', time: '6h', read: true, gradSeed: 7 },
-  { id: 'a9', type: 'gift', actor: 'PulseBeats', actorHandle: 'pulsebeats', text: 'sent you a Diamond × 3', time: '8h', read: true, gradSeed: 0 },
-  { id: 'a10', type: 'comment', actor: 'Vibe Master', actorHandle: 'vibemaster', text: 'commented: "When\'s the next one? 👀"', time: '1d', read: true, gradSeed: 1 },
-];
-
-const MOCK_CHATS: ChatItem[] = [
-  { id: 'c1', name: 'Jay Wave', handle: '@jaywave', lastMessage: 'That stream was insane bro 🔥', time: '2m', unread: 3, isLive: true, gradSeed: 0 },
-  { id: 'c2', name: 'Maya Creates', handle: '@maya.creates', lastMessage: 'Can we collab next week?', time: '15m', unread: 1, isLive: false, gradSeed: 1 },
-  { id: 'c3', name: 'StreamLord', handle: '@streamlord', lastMessage: 'Sent you a gift 🎁', time: '1h', unread: 0, isLive: true, gradSeed: 2 },
-  { id: 'c4', name: 'TechVibes99', handle: '@techvibes99', lastMessage: 'What\'s your stream setup?', time: '3h', unread: 0, isLive: false, gradSeed: 3 },
-  { id: 'c5', name: 'Ghost Vibes', handle: '@ghostvibes', lastMessage: 'Following you now!', time: '5h', unread: 0, isLive: false, gradSeed: 4 },
-  { id: 'c6', name: 'Dre Art', handle: '@dre_art', lastMessage: 'Loved the art stream ❤️', time: '1d', unread: 0, isLive: false, gradSeed: 5 },
-];
 
 interface StatusItem {
   id: string;
@@ -82,16 +64,79 @@ interface StatusItem {
   seen?: boolean;
 }
 
-const MOCK_STATUS: StatusItem[] = [
-  { id: 's1', name: 'Jay Wave',      isLive: true,  gradSeed: 0 },
-  { id: 's2', name: 'StreamLord',    isLive: true,  gradSeed: 2 },
-  { id: 's3', name: 'Kira Moon',     isLive: false, status: '🔥 going live at 8PM tonight', gradSeed: 7 },
-  { id: 's4', name: 'Maya Creates',  isLive: false, status: 'new video just dropped!',      gradSeed: 1 },
-  { id: 's5', name: 'TechVibes99',   isLive: false, status: '🎵 vibing rn',                gradSeed: 3 },
-  { id: 's6', name: 'Ghost Vibes',   isLive: false, status: 'need a collab partner 👀',     gradSeed: 4, seen: true },
-  { id: 's7', name: 'Dre Art',       isLive: false, status: '✨ new art series dropping',   gradSeed: 5, seen: true },
-  { id: 's8', name: 'Vibe Master',   isLive: false, status: 'taking a quick break 🙏',     gradSeed: 6, seen: true },
-];
+// ─── Data mapping helpers ─────────────────────────────────────────────────────
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+function notifTypeToActivityType(t: string): ActivityType {
+  if (t === 'stream_live') return 'live';
+  return t as ActivityType;
+}
+
+function notifText(n: AppNotification): string {
+  if (n.message) return n.message;
+  switch (n.type) {
+    case 'follow':      return 'started following you';
+    case 'like':        return 'liked your post';
+    case 'comment':     return 'commented on your post';
+    case 'gift':        return 'sent you a gift';
+    case 'stream_live': return 'just went live — tune in!';
+    default:            return 'interacted with you';
+  }
+}
+
+function toActivityItem(n: AppNotification): ActivityItem {
+  const name   = n.actor?.display_name ?? 'Someone';
+  const handle = (n.actor?.handle ?? 'user').replace(/^@/, '');
+  const seed   = handle.charCodeAt(0) % 8;
+  return {
+    id:          n.id,
+    type:        notifTypeToActivityType(n.type),
+    actor:       name,
+    actorId:     n.actor_id ?? '',
+    actorHandle: handle,
+    text:        notifText(n),
+    time:        relativeTime(n.created_at),
+    read:        n.read,
+    gradSeed:    seed,
+  };
+}
+
+function toChatItem(c: ConversationPreview): ChatItem {
+  const handle = (c.other_handle ?? 'user').replace(/^@/, '');
+  const seed   = handle.charCodeAt(0) % 8;
+  const time   = c.last_message_at ? relativeTime(c.last_message_at) : '';
+  return {
+    id:          c.other_user_id,        // navigate to /chat/{other_user_id}
+    name:        c.other_name,
+    handle:      `@${handle}`,
+    lastMessage: c.last_message ?? '',
+    time,
+    unread:      c.has_unread ? 1 : 0,
+    isLive:      false,
+    gradSeed:    seed,
+  };
+}
+
+function toStatusItem(s: UserStatus): StatusItem {
+  const name = s.profile?.display_name ?? 'User';
+  const seed = (s.profile?.handle ?? '').charCodeAt(0) % 8;
+  return {
+    id:       s.user_id,
+    name,
+    isLive:   s.is_live,
+    status:   s.is_live ? undefined : s.content,
+    gradSeed: seed,
+  };
+}
 
 const GRADIENT_POOL: [string, string][] = [
   ['#FF2D87', '#7B2FFF'],
@@ -228,7 +273,7 @@ function ActivityRow({ item, index, C }: { item: ActivityItem; index: number; C:
       <TouchableOpacity
         style={[actS.row, !item.read && { backgroundColor: C.pinkDim ?? C.bgCard }]}
         activeOpacity={0.75}
-        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(`/user/${item.actorHandle}` as any); }}
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); if (item.actorId) router.push({ pathname: '/user/[id]', params: { id: item.actorId, name: item.actor, handle: item.actorHandle } } as any); markNotificationRead(item.id); }}
       >
         {/* Avatar + type badge */}
         <View style={actS.avatarWrap}>
@@ -368,29 +413,52 @@ export default function ActivityScreen() {
   const [tab, setTab] = useState<'activity' | 'messages'>('activity');
   const [query, setQuery] = useState('');
 
-  const unreadActivity = MOCK_ACTIVITY.filter((a) => !a.read).length;
-  const unreadMessages = MOCK_CHATS.reduce((s, c) => s + c.unread, 0);
+  const [notifications, setNotifications] = useState<ActivityItem[]>([]);
+  const [conversations, setConversations] = useState<ChatItem[]>([]);
+  const [statuses, setStatuses] = useState<StatusItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    const [notifs, convos, stats] = await Promise.all([
+      getNotifications(),
+      getConversations(),
+      getFollowingStatuses(),
+    ]);
+    setNotifications(notifs.map(toActivityItem));
+    setConversations(convos.map(toChatItem));
+    setStatuses(stats.map(toStatusItem));
+    setLoading(false);
+  }, []);
+
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+
+  const unreadActivity  = notifications.filter((a) => !a.read).length;
+  const unreadMessages  = conversations.filter((c) => c.unread > 0).length;
 
   const filteredChats = query.trim()
-    ? MOCK_CHATS.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()))
-    : MOCK_CHATS;
+    ? conversations.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()))
+    : conversations;
 
   return (
     <View style={styles.container}>
-      {/* Header spacer */}
       <View style={{ height: insets.top + 12 }} />
 
-      {/* Live + status stories row */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.storiesRow}
-        style={styles.storiesScroll}
-      >
-        {MOCK_STATUS.map((item) => (
-          <StatusBubble key={item.id} item={item} C={C} />
-        ))}
-      </ScrollView>
+      {/* Status / live row — only shown when there's data */}
+      {statuses.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.storiesRow}
+          style={styles.storiesScroll}
+        >
+          {statuses.map((item) => (
+            <StatusBubble key={item.id} item={item} C={C} />
+          ))}
+        </ScrollView>
+      )}
 
       {/* Sub-tabs */}
       <View style={[styles.tabRow, { borderBottomColor: C.border }]}>
@@ -398,10 +466,7 @@ export default function ActivityScreen() {
           const active = tab === t;
           const badge = t === 'activity' ? unreadActivity : unreadMessages;
           return (
-            <TouchableOpacity
-              key={t}
-              style={styles.tabBtn}
-              activeOpacity={0.8}
+            <TouchableOpacity key={t} style={styles.tabBtn} activeOpacity={0.8}
               onPress={() => { Haptics.selectionAsync(); setTab(t); }}
             >
               <View style={styles.tabBtnInner}>
@@ -414,35 +479,37 @@ export default function ActivityScreen() {
                   </View>
                 )}
               </View>
-              {active && (
-                <LinearGradient
-                  colors={['#FF2D87', '#7B2FFF']}
-                  style={styles.tabUnderline}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                />
-              )}
+              {active && <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={styles.tabUnderline} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} />}
             </TouchableOpacity>
           );
         })}
       </View>
 
-      {/* Content */}
-      {tab === 'activity' ? (
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
-          showsVerticalScrollIndicator={false}
+      {loading ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color={C.pink} />
+        </View>
+      ) : tab === 'activity' ? (
+        <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: insets.bottom + 100 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.pink} />}
         >
-          {MOCK_ACTIVITY.map((item, i) => (
-            <View key={item.id}>
-              <ActivityRow item={item} index={i} C={C} />
-              {i < MOCK_ACTIVITY.length - 1 && <View style={[styles.divider, { backgroundColor: C.border }]} />}
+          {notifications.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="notifications-outline" size={40} color={C.textMuted} />
+              <Text style={[styles.emptyTitle, { color: C.textPrimary }]}>No notifications yet</Text>
+              <Text style={[styles.emptySub, { color: C.textMuted }]}>When people follow, like, or comment you'll see it here.</Text>
             </View>
-          ))}
+          ) : (
+            notifications.map((item, i) => (
+              <View key={item.id}>
+                <ActivityRow item={item} index={i} C={C} />
+                {i < notifications.length - 1 && <View style={[styles.divider, { backgroundColor: C.border }]} />}
+              </View>
+            ))
+          )}
         </ScrollView>
       ) : (
         <>
-          {/* Search bar */}
           <View style={styles.searchWrap}>
             <View style={[styles.searchBar, { backgroundColor: C.bgCard, borderColor: C.border }]}>
               <Ionicons name="search-outline" size={15} color={C.textMuted} />
@@ -460,19 +527,23 @@ export default function ActivityScreen() {
               )}
             </View>
           </View>
-
-
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
-            showsVerticalScrollIndicator={false}
+          <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: insets.bottom + 100 }} showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.pink} />}
           >
-            {filteredChats.map((chat, i) => (
-              <View key={chat.id}>
-                <ChatRow chat={chat} index={i} C={C} />
-                {i < filteredChats.length - 1 && <View style={[styles.divider, { backgroundColor: C.border, marginLeft: 78 }]} />}
+            {filteredChats.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="chatbubble-outline" size={40} color={C.textMuted} />
+                <Text style={[styles.emptyTitle, { color: C.textPrimary }]}>No messages yet</Text>
+                <Text style={[styles.emptySub, { color: C.textMuted }]}>Find a creator and send them a message!</Text>
               </View>
-            ))}
+            ) : (
+              filteredChats.map((chat, i) => (
+                <View key={chat.id}>
+                  <ChatRow chat={chat} index={i} C={C} />
+                  {i < filteredChats.length - 1 && <View style={[styles.divider, { backgroundColor: C.border, marginLeft: 78 }]} />}
+                </View>
+              ))
+            )}
           </ScrollView>
         </>
       )}
@@ -518,5 +589,8 @@ function makeStyles(C: AppColors) {
     onlineName: { fontFamily: 'DMSans-Medium', fontSize: 11, maxWidth: 56, textAlign: 'center' },
     scroll: { flex: 1 },
     divider: { height: 1 },
+    emptyState: { alignItems: 'center', paddingTop: 72, gap: 10, paddingHorizontal: 32 },
+    emptyTitle: { fontFamily: 'Syne-Bold', fontSize: 17 },
+    emptySub: { fontFamily: 'DMSans-Regular', fontSize: 13, textAlign: 'center', lineHeight: 20 },
   });
 }
