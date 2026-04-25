@@ -429,3 +429,48 @@ left join (select following_id, count(*) as follower_count  from follows group b
 left join (select follower_id,  count(*) as following_count from follows group by follower_id)  fg on fg.follower_id  = p.id
 left join (select user_id, count(*) filter (where status = 'published') as post_count from posts group by user_id) po on po.user_id = p.id
 left join (select user_id, count(*) as stream_count from stream_sessions group by user_id) ss on ss.user_id = p.id;
+
+-- ─── Gift catalog ──────────────────────────────────────────────────────────────
+create table if not exists gift_catalog (
+  id          text primary key,
+  name        text not null,
+  emoji       text not null,
+  cost_tokens int not null,
+  usd_value   numeric(8,4) not null default 0,
+  sort_order  int not null default 0
+);
+
+insert into gift_catalog (id, name, emoji, cost_tokens, usd_value, sort_order) values
+  ('heart',   'Heart',   E'❤️', 2,   0.02, 1),
+  ('rose',    'Rose',    E'\U0001F339',   5,   0.05, 2),
+  ('star',    'Star',    E'⭐',       10,  0.10, 3),
+  ('fire',    'Fire',    E'\U0001F525',   25,  0.25, 4),
+  ('diamond', 'Diamond', E'\U0001F48E',   50,  0.50, 5),
+  ('crown',   'Crown',   E'\U0001F451',   100, 1.00, 6),
+  ('rocket',  'Rocket',  E'\U0001F680',   200, 2.00, 7),
+  ('galaxy',  'Galaxy',  E'\U0001F30C',   500, 5.00, 8)
+on conflict (id) do nothing;
+
+-- ─── Gift events ───────────────────────────────────────────────────────────────
+create table if not exists gift_events (
+  id                uuid primary key default gen_random_uuid(),
+  stream_session_id uuid references stream_sessions on delete set null,
+  sender_id         uuid references profiles on delete set null,
+  recipient_id      uuid not null references profiles on delete cascade,
+  gift_id           text not null references gift_catalog,
+  quantity          int not null default 1,
+  tokens_spent      int not null,
+  usd_value         numeric(8,4) not null default 0,
+  created_at        timestamptz not null default now()
+);
+
+alter table gift_events enable row level security;
+
+create policy "Anyone can view gift events"
+  on gift_events for select using (true);
+
+create policy "Authenticated users can send gifts"
+  on gift_events for insert with check (auth.uid() = sender_id);
+
+-- ─── Realtime enabled for gift events ─────────────────────────────────────────
+alter publication supabase_realtime add table gift_events;

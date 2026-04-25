@@ -43,6 +43,7 @@ import { useApp, MIN_VIBA_TO_STREAM, VIBA_EARN_RATE } from '@/context/AppContext
 import { startStreamSession, endStreamSession } from '@/lib/streams';
 import { notifyStreamEnded, notifyViewerMilestone } from '@/lib/notifications';
 import { RestreamChatClient, fetchRestreamViewers } from '@/lib/restream';
+import { subscribeToStreamGifts } from '@/lib/gifts';
 
 const { width, height } = Dimensions.get('window');
 
@@ -117,7 +118,11 @@ function LiveCommentRow({
   isSelected?: boolean;
 }) {
   const platform = getPlatform(item.platform);
-  const giftEmoji: Record<string, string> = { Rose: '🌹', Star: '⭐', default: '🎁' };
+  const giftEmoji: Record<string, string> = {
+    Heart: '❤️', Rose: '🌹', Star: '⭐', Fire: '🔥',
+    Diamond: '💎', Crown: '👑', Rocket: '🚀', Galaxy: '🌌',
+    Bits: '💎', 'Super Chat': '💬', 'TikTok Diamond': '💠', default: '🎁',
+  };
   const canReply = item.type === 'comment' || item.type === 'follow';
 
   return (
@@ -1262,6 +1267,60 @@ const endedStyles = StyleSheet.create({
   },
 });
 
+// ─── Big gift alert overlay ────────────────────────────────────────────────────
+
+function BigGiftAlert({ data }: { data: { emoji: string; name: string; sender: string; tokens: number } }) {
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(350).springify()}
+      exiting={FadeOutDown.duration(300)}
+      style={bigAlertStyles.wrap}
+    >
+      <LinearGradient
+        colors={['rgba(255,184,0,0.97)', 'rgba(200,100,0,0.97)']}
+        style={bigAlertStyles.card}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <Text style={bigAlertStyles.emoji}>{data.emoji}</Text>
+        <View style={bigAlertStyles.info}>
+          <Text style={bigAlertStyles.name}>{data.name}</Text>
+          <Text style={bigAlertStyles.sender}>from {data.sender}</Text>
+        </View>
+        <View style={bigAlertStyles.tokensWrap}>
+          <Text style={bigAlertStyles.tokensNum}>+{data.tokens}</Text>
+          <Text style={bigAlertStyles.tokensUnit}>$VIBA</Text>
+        </View>
+      </LinearGradient>
+    </Animated.View>
+  );
+}
+
+const bigAlertStyles = StyleSheet.create({
+  wrap: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    top: 140,
+    zIndex: 100,
+    borderRadius: 18,
+    overflow: 'hidden',
+    shadowColor: '#FFB800',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.65,
+    shadowRadius: 18,
+    elevation: 20,
+  },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 14 },
+  emoji: { fontSize: 36 },
+  info: { flex: 1, gap: 2 },
+  name: { fontFamily: 'Syne-Bold', fontSize: 16, color: '#1A0800' },
+  sender: { fontFamily: 'DMSans-Regular', fontSize: 12, color: 'rgba(0,0,0,0.6)' },
+  tokensWrap: { alignItems: 'flex-end' },
+  tokensNum: { fontFamily: 'Syne-ExtraBold', fontSize: 22, color: '#1A0800' },
+  tokensUnit: { fontFamily: 'DMSans-Bold', fontSize: 10, color: 'rgba(0,0,0,0.55)', marginTop: -2 },
+});
+
 // ─── Root component ───────────────────────────────────────────────────────────
 
 export default function GoLiveTab() {
@@ -1289,6 +1348,7 @@ export default function GoLiveTab() {
   const sessionIdRef = useRef<string | null>(null);
   const peakViewersRef = useRef(0);
   const milestonesFiredRef = useRef<Set<number>>(new Set());
+  const [bigGiftAlert, setBigGiftAlert] = useState<{ emoji: string; name: string; sender: string; tokens: number } | null>(null);
 
   useEffect(() => {
     if (status === 'starting') {
@@ -1390,6 +1450,43 @@ export default function GoLiveTab() {
       };
     }
   }, [status, restreamToken]);
+
+  // Realtime gift reception — awards tokens and injects into comment overlay
+  useEffect(() => {
+    if (status !== 'live') return;
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+
+    let dismissTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const channel = subscribeToStreamGifts(sid, (event) => {
+      setComments((prev) => [
+        ...prev.slice(-19),
+        {
+          id: `gift_${event.id}`,
+          platform: 'tiktok' as const,
+          username: event.senderHandle,
+          text: '',
+          type: 'gift' as const,
+          giftName: event.giftName,
+          giftCount: event.quantity,
+          color: '#FFB800',
+        },
+      ]);
+      addTokens(event.tokensEarned, `Gift: ${event.quantity}x ${event.giftName}`);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (event.tokensEarned >= 100) {
+        setBigGiftAlert({ emoji: event.giftEmoji, name: event.giftName, sender: event.senderHandle, tokens: event.tokensEarned });
+        if (dismissTimer) clearTimeout(dismissTimer);
+        dismissTimer = setTimeout(() => setBigGiftAlert(null), 3500);
+      }
+    });
+
+    return () => {
+      void channel.unsubscribe();
+      if (dismissTimer) clearTimeout(dismissTimer);
+    };
+  }, [status]);
 
   const togglePlatform = (id: PlatformId) => {
     Haptics.selectionAsync();
@@ -1550,6 +1647,11 @@ export default function GoLiveTab() {
           streamTitle={streamTitle}
           insets={insets}
         />
+      )}
+
+      {/* Big gift alert — appears over live screen when a premium gift is received */}
+      {bigGiftAlert !== null && status === 'live' && (
+        <BigGiftAlert data={bigGiftAlert} />
       )}
 
       {/* Starting overlay on top */}

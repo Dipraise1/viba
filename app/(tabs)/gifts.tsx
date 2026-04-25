@@ -1,107 +1,80 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { FontAwesome5, Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/context/ThemeContext';
-import { getPlatform, PlatformId } from '@/constants/platforms';
+import { supabase } from '@/lib/supabase';
+import {
+  fetchGiftAnalytics,
+  fetchRecentGifts,
+  GiftPeriod,
+  GiftAnalytics,
+  GiftEventRow,
+} from '@/lib/gifts';
 
-const { width } = Dimensions.get('window');
-
-type Period = 'today' | 'week' | 'month' | 'all';
-
-const PERIODS: { id: Period; label: string }[] = [
+const PERIODS: { id: GiftPeriod; label: string }[] = [
   { id: 'today', label: 'Today' },
   { id: 'week', label: 'This week' },
   { id: 'month', label: 'This month' },
   { id: 'all', label: 'All time' },
 ];
 
-const GIFT_DATA: Record<Period, { total: string; breakdown: { platform: PlatformId; amount: string; gifts: number }[] }> = {
-  today: {
-    total: '$47',
-    breakdown: [
-      { platform: 'tiktok', amount: '$24', gifts: 32 },
-      { platform: 'instagram', amount: '$14', gifts: 18 },
-      { platform: 'twitch', amount: '$9', gifts: 6 },
-    ],
-  },
-  week: {
-    total: '$312',
-    breakdown: [
-      { platform: 'tiktok', amount: '$148', gifts: 210 },
-      { platform: 'instagram', amount: '$87', gifts: 112 },
-      { platform: 'twitch', amount: '$51', gifts: 34 },
-      { platform: 'youtube', amount: '$26', gifts: 28 },
-    ],
-  },
-  month: {
-    total: '$1,240',
-    breakdown: [
-      { platform: 'tiktok', amount: '$580', gifts: 820 },
-      { platform: 'instagram', amount: '$340', gifts: 440 },
-      { platform: 'twitch', amount: '$210', gifts: 140 },
-      { platform: 'youtube', amount: '$110', gifts: 105 },
-    ],
-  },
-  all: {
-    total: '$4,890',
-    breakdown: [
-      { platform: 'tiktok', amount: '$2,200', gifts: 3100 },
-      { platform: 'instagram', amount: '$1,300', gifts: 1800 },
-      { platform: 'twitch', amount: '$860', gifts: 560 },
-      { platform: 'youtube', amount: '$530', gifts: 490 },
-    ],
-  },
-};
-
-interface GiftEvent {
-  id: string;
-  platform: PlatformId;
-  username: string;
-  giftName: string;
-  count: number;
-  value: string;
-  time: string;
+function timeAgo(iso: string): string {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
 }
 
-const RECENT_GIFTS: GiftEvent[] = [
-  { id: '1', platform: 'tiktok', username: 'jaywave', giftName: 'Rose', count: 5, value: '$2.50', time: '2 min ago' },
-  { id: '2', platform: 'instagram', username: 'maya.creates', giftName: 'Star', count: 20, value: '$4.00', time: '5 min ago' },
-  { id: '3', platform: 'twitch', username: 'streamlord', giftName: 'Bits', count: 500, value: '$5.00', time: '8 min ago' },
-  { id: '4', platform: 'tiktok', username: 'noodles_fan', giftName: 'Rose', count: 1, value: '$0.50', time: '12 min ago' },
-  { id: '5', platform: 'youtube', username: 'techvibes99', giftName: 'Super Chat', count: 1, value: '$10.00', time: '15 min ago' },
-  { id: '6', platform: 'tiktok', username: 'ghostvibes', giftName: 'TikTok Diamond', count: 3, value: '$7.50', time: '20 min ago' },
-  { id: '7', platform: 'instagram', username: 'dre_art', giftName: 'Star', count: 50, value: '$10.00', time: '25 min ago' },
-];
-
-function GiftEmoji({ name }: { name: string }) {
-  const map: Record<string, string> = {
-    Rose: '🌹',
-    Star: '⭐',
-    Bits: '💎',
-    'Super Chat': '💬',
-    'TikTok Diamond': '💠',
-    default: '🎁',
-  };
-  return <Text style={{ fontSize: 22 }}>{map[name] ?? map.default}</Text>;
+function formatUsd(usd: number): string {
+  if (usd < 0.01) return '<$0.01';
+  return `$${usd.toFixed(2)}`;
 }
 
 export default function GiftsScreen() {
   const insets = useSafeAreaInsets();
   const { colors: C } = useTheme();
-  const [period, setPeriod] = useState<Period>('week');
-  const data = GIFT_DATA[period];
-  const totalGifts = data.breakdown.reduce((s, b) => s + b.gifts, 0);
-  const maxAmount = Math.max(...data.breakdown.map((b) => parseFloat(b.amount.replace(/[$,]/g, ''))));
+  const [period, setPeriod] = useState<GiftPeriod>('week');
+  const [userId, setUserId] = useState<string | null>(null);
+  const [analytics, setAnalytics] = useState<GiftAnalytics | null>(null);
+  const [recentGifts, setRecentGifts] = useState<GiftEventRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserId(user.id);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    setLoading(true);
+    Promise.all([
+      fetchGiftAnalytics(userId, period),
+      fetchRecentGifts(userId, 20),
+    ]).then(([a, r]) => {
+      setAnalytics(a);
+      setRecentGifts(r);
+      setLoading(false);
+    });
+  }, [userId, period]);
+
+  const maxTokens = useMemo(
+    () => Math.max(...(analytics?.breakdown.map((b) => b.tokens) ?? [1]), 1),
+    [analytics]
+  );
+
+  const isEmpty = !loading && analytics?.totalCount === 0;
 
   return (
     <ScrollView
@@ -112,10 +85,7 @@ export default function GiftsScreen() {
       {/* Header */}
       <Animated.View entering={FadeInDown.delay(0).duration(500)} style={styles.header}>
         <Text style={[styles.headerTitle, { color: C.textPrimary }]}>Gifts</Text>
-        <TouchableOpacity
-          style={[styles.exportBtn, { borderColor: C.border }]}
-          activeOpacity={0.7}
-        >
+        <TouchableOpacity style={[styles.exportBtn, { borderColor: C.border }]} activeOpacity={0.7}>
           <Ionicons name="download-outline" size={16} color={C.textSecondary} />
           <Text style={[styles.exportText, { color: C.textSecondary }]}>Export</Text>
         </TouchableOpacity>
@@ -145,104 +115,128 @@ export default function GiftsScreen() {
         ))}
       </Animated.View>
 
-      {/* Total earned card */}
-      <Animated.View entering={FadeInDown.delay(120).duration(500)}>
-        <View style={[styles.totalCard, { borderColor: C.border }]}>
-          <LinearGradient
-            colors={['rgba(255,45,135,0.12)', 'rgba(123,47,255,0.12)']}
-            style={[StyleSheet.absoluteFill, { borderRadius: 18 }]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          />
-          <Text style={[styles.totalLabel, { color: C.textSecondary }]}>Total earned</Text>
-          <Text style={[styles.totalAmount, { color: C.textPrimary }]}>{data.total}</Text>
-          <View style={styles.totalMeta}>
-            <View style={styles.totalMetaItem}>
-              <Ionicons name="gift-outline" size={14} color={C.textMuted} />
-              <Text style={[styles.totalMetaText, { color: C.textMuted }]}>{totalGifts} gifts</Text>
-            </View>
-            <View style={styles.totalMetaItem}>
-              <FontAwesome5 name="broadcast-tower" size={12} color={C.textMuted} />
-              <Text style={[styles.totalMetaText, { color: C.textMuted }]}>{data.breakdown.length} platforms</Text>
-            </View>
-          </View>
+      {loading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={C.pink} size="large" />
         </View>
-      </Animated.View>
-
-      {/* Platform breakdown */}
-      <Animated.View entering={FadeInDown.delay(200).duration(500)}>
-        <Text style={[styles.sectionTitle, { color: C.textPrimary }]}>Platform breakdown</Text>
-      </Animated.View>
-
-      <View style={styles.breakdownList}>
-        {data.breakdown.map((b, index) => {
-          const platform = getPlatform(b.platform);
-          const pct = parseFloat(b.amount.replace(/[$,]/g, '')) / maxAmount;
-
-          return (
-            <Animated.View
-              key={b.platform}
-              entering={FadeInDown.delay(240 + index * 60).duration(400)}
-              style={[styles.breakdownCard, { borderColor: C.border }]}
-            >
-              <View style={styles.breakdownTop}>
-                <View style={[styles.platformIconSmall, { backgroundColor: platform.gradient[0] }]}>
-                  <FontAwesome5 name={platform.icon} size={13} color="#FFFFFF" solid />
+      ) : isEmpty ? (
+        <Animated.View entering={FadeInDown.delay(120).duration(500)} style={[styles.emptyCard, { borderColor: C.border }]}>
+          <Text style={styles.emptyEmoji}>🎁</Text>
+          <Text style={[styles.emptyTitle, { color: C.textPrimary }]}>No gifts yet</Text>
+          <Text style={[styles.emptySub, { color: C.textMuted }]}>Go live to start receiving gifts from your viewers</Text>
+        </Animated.View>
+      ) : (
+        <>
+          {/* Total earned card */}
+          <Animated.View entering={FadeInDown.delay(120).duration(500)}>
+            <View style={[styles.totalCard, { borderColor: C.border }]}>
+              <LinearGradient
+                colors={['rgba(255,45,135,0.12)', 'rgba(123,47,255,0.12)']}
+                style={[StyleSheet.absoluteFill, { borderRadius: 18 }]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              />
+              <Text style={[styles.totalLabel, { color: C.textSecondary }]}>Total earned</Text>
+              <Text style={[styles.totalAmount, { color: C.textPrimary }]}>
+                {(analytics?.totalTokens ?? 0).toLocaleString()}
+                <Text style={[styles.totalUnit, { color: C.textMuted }]}> $VIBA</Text>
+              </Text>
+              <Text style={[styles.totalUsdSub, { color: C.textMuted }]}>
+                ≈ {formatUsd(analytics?.totalUsd ?? 0)} USD equivalent
+              </Text>
+              <View style={styles.totalMeta}>
+                <View style={styles.totalMetaItem}>
+                  <Ionicons name="gift-outline" size={14} color={C.textMuted} />
+                  <Text style={[styles.totalMetaText, { color: C.textMuted }]}>
+                    {analytics?.totalCount ?? 0} gifts received
+                  </Text>
                 </View>
-                <Text style={[styles.breakdownName, { color: C.textPrimary }]}>{platform.name}</Text>
-                <View style={{ flex: 1 }} />
-                <Text style={[styles.breakdownGifts, { color: C.textMuted }]}>{b.gifts} gifts</Text>
-                <Text style={[styles.breakdownAmount, { color: C.textPrimary }]}>{b.amount}</Text>
+                <View style={styles.totalMetaItem}>
+                  <Ionicons name="layers-outline" size={14} color={C.textMuted} />
+                  <Text style={[styles.totalMetaText, { color: C.textMuted }]}>
+                    {analytics?.breakdown.length ?? 0} gift types
+                  </Text>
+                </View>
               </View>
-              <View style={[styles.barTrack, { backgroundColor: C.border }]}>
-                <View
-                  style={[styles.barFill, {
-                    width: `${pct * 100}%`,
-                    backgroundColor: platform.gradient[0] as string,
-                  }]}
-                />
+            </View>
+          </Animated.View>
+
+          {/* Gift type breakdown */}
+          {(analytics?.breakdown.length ?? 0) > 0 && (
+            <>
+              <Animated.View entering={FadeInDown.delay(200).duration(500)}>
+                <Text style={[styles.sectionTitle, { color: C.textPrimary }]}>By gift type</Text>
+              </Animated.View>
+
+              <View style={styles.breakdownList}>
+                {analytics!.breakdown.map((b, index) => {
+                  const pct = b.tokens / maxTokens;
+                  return (
+                    <Animated.View
+                      key={b.giftId}
+                      entering={FadeInDown.delay(240 + index * 60).duration(400)}
+                      style={[styles.breakdownCard, { borderColor: C.border, backgroundColor: C.bgCard }]}
+                    >
+                      <View style={styles.breakdownTop}>
+                        <Text style={styles.giftEmojiLg}>{b.emoji}</Text>
+                        <Text style={[styles.breakdownName, { color: C.textPrimary }]}>{b.name}</Text>
+                        <View style={{ flex: 1 }} />
+                        <Text style={[styles.breakdownGifts, { color: C.textMuted }]}>{b.count}x</Text>
+                        <Text style={[styles.breakdownAmount, { color: C.textPrimary }]}>
+                          {b.tokens.toLocaleString()} <Text style={{ fontSize: 11, color: C.textMuted }}>$V</Text>
+                        </Text>
+                      </View>
+                      <View style={[styles.barTrack, { backgroundColor: C.border }]}>
+                        <LinearGradient
+                          colors={['#FF2D87', '#7B2FFF']}
+                          style={[styles.barFill, { width: `${Math.max(pct * 100, 4)}%` }]}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                        />
+                      </View>
+                    </Animated.View>
+                  );
+                })}
               </View>
-            </Animated.View>
-          );
-        })}
-      </View>
+            </>
+          )}
 
-      {/* Recent gifts */}
-      <Animated.View entering={FadeInDown.delay(480).duration(500)}>
-        <Text style={[styles.sectionTitle, { marginTop: 8, color: C.textPrimary }]}>Recent gifts</Text>
-      </Animated.View>
+          {/* Recent gifts */}
+          {recentGifts.length > 0 && (
+            <>
+              <Animated.View entering={FadeInDown.delay(480).duration(500)}>
+                <Text style={[styles.sectionTitle, { marginTop: 8, color: C.textPrimary }]}>Recent gifts</Text>
+              </Animated.View>
 
-      <View style={styles.recentList}>
-        {RECENT_GIFTS.map((g, index) => {
-          const platform = getPlatform(g.platform);
-          return (
-            <Animated.View
-              key={g.id}
-              entering={FadeInDown.delay(520 + index * 50).duration(400)}
-              style={[styles.giftRow, { borderBottomColor: C.border }]}
-            >
-              <View style={styles.giftLeft}>
-                <GiftEmoji name={g.giftName} />
-                <View style={styles.giftInfo}>
-                  <View style={styles.giftNameRow}>
-                    <Text style={[styles.giftName, { color: C.textPrimary }]}>
-                      {g.count > 1 ? `${g.count}x ` : ''}{g.giftName}
-                    </Text>
-                    <View style={[styles.platformTagSmall, { backgroundColor: platform.gradient[0] + '22' }]}>
-                      <FontAwesome5 name={platform.icon} size={9} color={platform.gradient[0]} solid />
+              <View style={styles.recentList}>
+                {recentGifts.map((g, index) => (
+                  <Animated.View
+                    key={g.id}
+                    entering={FadeInDown.delay(520 + index * 50).duration(400)}
+                    style={[styles.giftRow, { borderBottomColor: C.border }]}
+                  >
+                    <View style={styles.giftLeft}>
+                      <Text style={styles.giftEmojiMd}>{g.giftEmoji}</Text>
+                      <View style={styles.giftInfo}>
+                        <Text style={[styles.giftName, { color: C.textPrimary }]}>
+                          {g.quantity > 1 ? `${g.quantity}x ` : ''}{g.giftName}
+                        </Text>
+                        <Text style={[styles.giftFrom, { color: C.textMuted }]}>from {g.senderHandle}</Text>
+                      </View>
                     </View>
-                  </View>
-                  <Text style={[styles.giftFrom, { color: C.textMuted }]}>from @{g.username}</Text>
-                </View>
+                    <View style={styles.giftRight}>
+                      <Text style={[styles.giftValue, { color: C.textPrimary }]}>
+                        +{g.tokensSpent} <Text style={{ fontSize: 11, color: C.textMuted }}>$V</Text>
+                      </Text>
+                      <Text style={[styles.giftTime, { color: C.textMuted }]}>{timeAgo(g.createdAt)}</Text>
+                    </View>
+                  </Animated.View>
+                ))}
               </View>
-              <View style={styles.giftRight}>
-                <Text style={[styles.giftValue, { color: C.textPrimary }]}>{g.value}</Text>
-                <Text style={[styles.giftTime, { color: C.textMuted }]}>{g.time}</Text>
-              </View>
-            </Animated.View>
-          );
-        })}
-      </View>
+            </>
+          )}
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -257,29 +251,35 @@ const styles = StyleSheet.create({
   periodRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   periodPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
   periodText: { fontFamily: 'DMSans-Medium', fontSize: 13 },
-  totalCard: { borderRadius: 18, borderWidth: 1, padding: 24, overflow: 'hidden', gap: 6 },
+  loadingWrap: { paddingVertical: 60, alignItems: 'center' },
+  emptyCard: { borderRadius: 18, borderWidth: 1, padding: 32, alignItems: 'center', gap: 10 },
+  emptyEmoji: { fontSize: 48 },
+  emptyTitle: { fontFamily: 'Syne-Bold', fontSize: 18 },
+  emptySub: { fontFamily: 'DMSans-Regular', fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  totalCard: { borderRadius: 18, borderWidth: 1, padding: 24, overflow: 'hidden', gap: 4 },
   totalLabel: { fontFamily: 'DMSans-Medium', fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 },
-  totalAmount: { fontFamily: 'Syne-ExtraBold', fontSize: 48, lineHeight: 52 },
-  totalMeta: { flexDirection: 'row', gap: 16, marginTop: 4 },
+  totalAmount: { fontFamily: 'Syne-ExtraBold', fontSize: 44, lineHeight: 48, marginTop: 4 },
+  totalUnit: { fontSize: 16 },
+  totalUsdSub: { fontFamily: 'DMSans-Regular', fontSize: 13, marginTop: 2 },
+  totalMeta: { flexDirection: 'row', gap: 16, marginTop: 8 },
   totalMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   totalMetaText: { fontFamily: 'DMSans-Regular', fontSize: 13 },
   sectionTitle: { fontFamily: 'Syne-Bold', fontSize: 16 },
   breakdownList: { gap: 10 },
   breakdownCard: { borderRadius: 12, borderWidth: 1, padding: 14, gap: 10 },
   breakdownTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  platformIconSmall: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  giftEmojiLg: { fontSize: 26 },
+  giftEmojiMd: { fontSize: 22 },
   breakdownName: { fontFamily: 'DMSans-Bold', fontSize: 14 },
   breakdownGifts: { fontFamily: 'DMSans-Regular', fontSize: 12, marginRight: 8 },
   breakdownAmount: { fontFamily: 'Syne-Bold', fontSize: 16 },
   barTrack: { height: 4, borderRadius: 2, overflow: 'hidden' },
-  barFill: { height: 4, borderRadius: 2, opacity: 0.7 },
+  barFill: { height: 4, borderRadius: 2 },
   recentList: { gap: 0 },
   giftRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1 },
   giftLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   giftInfo: { gap: 2, flex: 1 },
-  giftNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   giftName: { fontFamily: 'DMSans-Bold', fontSize: 14 },
-  platformTagSmall: { width: 20, height: 20, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   giftFrom: { fontFamily: 'DMSans-Regular', fontSize: 12 },
   giftRight: { alignItems: 'flex-end', gap: 2 },
   giftValue: { fontFamily: 'Syne-Bold', fontSize: 15 },
