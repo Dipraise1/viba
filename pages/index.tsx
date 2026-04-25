@@ -1,4 +1,5 @@
 import Head from 'next/head';
+import Image from 'next/image';
 import s from '../styles/Home.module.css';
 
 /* ── Inline SVGs for platform logos ─────────────────────────── */
@@ -179,18 +180,21 @@ function PlatformVisual() {
 /* ── Main page ─────────────────────────────────────────────────── */
 export default function Home() {
   const stripItems = [
+    'Social Media Platform',
     'Simultaneous Streaming',
     'Unified Comments',
     'Cross-Platform Gifts',
     'Real-Time Analytics',
     'Per-Platform Replies',
     'Gift Dashboard',
+    'Earn $VIBA Tokens',
+    'Connect & Stream',
   ];
 
   return (
     <>
       <Head>
-        <title>Viba — Go Live Everywhere. At Once.</title>
+        <title>Viba — Social Media Platform & Live Streaming, Everywhere at Once.</title>
       </Head>
 
       {/* ── HERO ──────────────────────────────────────────────────────── */}
@@ -199,9 +203,13 @@ export default function Home() {
         <div className={s.glowLeft} aria-hidden />
         <div className={s.glowRight} aria-hidden />
 
+        <div className={`${s.heroLogo} animate-up`}>
+          <Image src="/logo.png" alt="Viba" width={96} height={96} priority />
+        </div>
+
         <p className={`${s.eyebrow} animate-up`}>
           <span className={s.eyebrowDot} />
-          Multi-platform live streaming
+          Social media &amp; multi-platform live streaming
         </p>
 
         <h1 className={s.heroHeadline}>
@@ -213,7 +221,7 @@ export default function Home() {
         </h1>
 
         <p className={`${s.heroBrief} animate-up animate-up-d4`}>
-          Go live on TikTok, Instagram, Facebook, YouTube, and Twitch simultaneously.
+          Viba is the social media platform that connects creators and their communities — and lets you go live on TikTok, Instagram, Facebook, YouTube, and Twitch simultaneously.
           One comment feed. Every gift. Zero tab-switching.
         </p>
 
@@ -315,9 +323,64 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ── VIBA TOKEN ─────────────────────────────────────────────────── */}
+      <section className={s.token}>
+        <div className={s.tokenGlow} aria-hidden />
+        <div className={s.tokenLeft}>
+          <p className={s.sectionLabel}>Viba Token</p>
+          <h2 className={s.tokenHeadline}>
+            Stream more.<br />Earn more.
+          </h2>
+          <p className={s.tokenDesc}>
+            Every minute you go live earns you <strong>$VIBA tokens</strong> — automatically distributed based on your stream time, viewer count, and engagement across all platforms. No wallets to set up. No hoops to jump through.
+          </p>
+          <ul className={s.tokenList}>
+            <li>
+              <span className={s.tokenListDot} style={{ background: '#FF2D87' }} />
+              <span><strong>Stream time</strong> — earn tokens for every minute live</span>
+            </li>
+            <li>
+              <span className={s.tokenListDot} style={{ background: '#A855F7' }} />
+              <span><strong>Viewer reach</strong> — more platforms, more viewers, more $VIBA</span>
+            </li>
+            <li>
+              <span className={s.tokenListDot} style={{ background: '#7B2FFF' }} />
+              <span><strong>Engagement</strong> — replies, gifts received, and follower growth all count</span>
+            </li>
+          </ul>
+        </div>
+        <div className={s.tokenRight}>
+          <div className={s.tokenCard}>
+            <div className={s.tokenCardHeader}>
+              <div className={s.tokenSymbol}>V</div>
+              <span className={s.tokenCardLabel}>Estimated earnings</span>
+            </div>
+            <div className={s.tokenAmount}>
+              <span className={s.tokenAmountValue}>1,240</span>
+              <span className={s.tokenAmountUnit}>$VIBA</span>
+            </div>
+            <p className={s.tokenCardSub}>from a 1hr stream · 2.4K viewers · 5 platforms</p>
+            <div className={s.tokenBreakdown}>
+              <div className={s.tokenBreakdownRow}>
+                <span>Stream time</span>
+                <span className={s.tokenBreakdownVal}>+400</span>
+              </div>
+              <div className={s.tokenBreakdownRow}>
+                <span>Viewer reach</span>
+                <span className={s.tokenBreakdownVal}>+560</span>
+              </div>
+              <div className={s.tokenBreakdownRow}>
+                <span>Gifts &amp; engagement</span>
+                <span className={s.tokenBreakdownVal}>+280</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── PLATFORMS ──────────────────────────────────────────────────── */}
       <section className={s.platforms}>
-        <p className={s.platformsEyebrow}>Stream everywhere.</p>
+        <p className={s.platformsEyebrow}>Connect. Share. Stream everywhere.</p>
         <PlatformVisual />
         <p className={s.platformsSub}>
           More platforms coming. Your audience is there — Viba will be too.
@@ -329,7 +392,8 @@ export default function Home() {
         <div className={s.bottomGlow} aria-hidden />
         <p className={s.bottomLabel}>Available now</p>
         <h2 className={s.bottomHeadline}>
-          One stream.<br />Every platform.
+          One social platform.<br />Every stream.<br />
+          <span className={s.bottomHeadlineAccent}>Earn every minute.</span>
         </h2>
         <div className={s.bottomActions}>
           <a href="#" className={s.ctaBtnLarge}>
