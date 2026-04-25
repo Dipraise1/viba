@@ -13,7 +13,7 @@ export default function Footer() {
           <Link href="/terms" className={s.link}>Terms of Service</Link>
           <Link href="/delete-data" className={s.link}>Delete My Data</Link>
         </div>
-        <span className={s.copy}>© 2025 Viba</span>
+        <span className={s.copy}>© 2026 Viba</span>
       </div>
     </footer>
   );
