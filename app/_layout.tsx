@@ -108,7 +108,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (session && (inLogin || segments[0] === 'index')) {
+    if (session && (inLogin || (segments[0] as string) === 'index')) {
       // Check if user has set a username yet
       const checkUsername = async () => {
         const { data } = await supabase

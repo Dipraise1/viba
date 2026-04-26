@@ -17,6 +17,7 @@ export interface ConversationPreview {
   other_name: string;
   other_handle: string;
   other_avatar: string | null;
+  other_is_live: boolean;
   last_message: string | null;
   last_message_at: string | null;
   last_sender_id: string | null;
@@ -120,7 +121,7 @@ export async function getConversations(): Promise<ConversationPreview[]> {
   // Get the other participant in each conversation
   const { data: otherParts } = await supabase
     .from('conversation_participants')
-    .select('conversation_id, user_id, profiles:profiles!user_id(display_name, handle, avatar_url)')
+    .select('conversation_id, user_id, profiles:profiles!user_id(display_name, handle, avatar_url, is_live)')
     .in('conversation_id', convIds)
     .neq('user_id', user.id);
 
@@ -140,7 +141,7 @@ export async function getConversations(): Promise<ConversationPreview[]> {
   });
 
   return otherParts.map((op) => {
-    const profile = op.profiles as unknown as { display_name: string; handle: string; avatar_url: string | null };
+    const profile = op.profiles as unknown as { display_name: string; handle: string; avatar_url: string | null; is_live?: boolean };
     const lastMsg = lastMsgMap[op.conversation_id];
     const lastRead = lastReadMap[op.conversation_id];
     return {
@@ -149,6 +150,7 @@ export async function getConversations(): Promise<ConversationPreview[]> {
       other_name:      profile.display_name,
       other_handle:    profile.handle,
       other_avatar:    profile.avatar_url,
+      other_is_live:   profile.is_live ?? false,
       last_message:    lastMsg?.content ?? null,
       last_message_at: lastMsg?.created_at ?? null,
       last_sender_id:  lastMsg?.sender_id ?? null,

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +16,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/context/ThemeContext';
+import { getConversations, type ConversationPreview } from '@/lib/messages';
 import type { AppColors } from '@/constants/themes';
 
 const { width: W } = Dimensions.get('window');
@@ -38,8 +40,18 @@ function initials(name: string) {
   return name.split(' ').map((w) => w[0] ?? '').join('').toUpperCase().slice(0, 2) || '??';
 }
 
+function timeAgo(iso: string): string {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'now';
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  if (s < 604800) return `${Math.floor(s / 86400)}d`;
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 interface ChatItem {
   id: string;
+  otherUserId: string;
   name: string;
   handle: string;
   lastMessage: string;
@@ -48,18 +60,21 @@ interface ChatItem {
   isLive: boolean;
 }
 
-const MOCK_CHATS: ChatItem[] = [
-  { id: 'a1', name: 'Jay Wave', handle: '@jaywave', lastMessage: 'That stream was insane bro 🔥', time: '2m', unread: 3, isLive: true },
-  { id: 'b2', name: 'Maya Creates', handle: '@maya.creates', lastMessage: 'Can we collab next week?', time: '15m', unread: 1, isLive: false },
-  { id: 'c3', name: 'StreamLord', handle: '@streamlord', lastMessage: 'Sent you a gift 🎁', time: '1h', unread: 0, isLive: true },
-  { id: 'd4', name: 'TechVibes99', handle: '@techvibes99', lastMessage: 'What\'s your stream setup?', time: '3h', unread: 0, isLive: false },
-  { id: 'e5', name: 'Ghost Vibes', handle: '@ghostvibes', lastMessage: 'Following you now!', time: '5h', unread: 0, isLive: false },
-  { id: 'f6', name: 'Dre Art', handle: '@dre_art', lastMessage: 'Loved the art stream ❤️', time: '1d', unread: 0, isLive: false },
-  { id: 'g7', name: 'Noodles Fan', handle: '@noodles_fan', lastMessage: 'When\'s the next one?', time: '2d', unread: 0, isLive: false },
-];
+function previewToItem(p: ConversationPreview): ChatItem {
+  return {
+    id: p.conversation_id,
+    otherUserId: p.other_user_id,
+    name: p.other_name || p.other_handle || 'User',
+    handle: p.other_handle ? `@${p.other_handle.replace(/^@/, '')}` : '',
+    lastMessage: p.last_message ?? '',
+    time: p.last_message_at ? timeAgo(p.last_message_at) : '',
+    unread: p.has_unread ? 1 : 0,
+    isLive: p.other_is_live,
+  };
+}
 
 function ChatRow({ chat, index, C }: { chat: ChatItem; index: number; C: AppColors }) {
-  const grad = avatarGrad(chat.id);
+  const grad = avatarGrad(chat.otherUserId || chat.id);
   const styles = useMemo(() => makeRowStyles(C), [C]);
 
   return (
@@ -67,7 +82,10 @@ function ChatRow({ chat, index, C }: { chat: ChatItem; index: number; C: AppColo
       <TouchableOpacity
         activeOpacity={0.75}
         style={styles.row}
-        onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          router.push({ pathname: '/chat/[id]', params: { id: chat.otherUserId, name: chat.name, handle: chat.handle } } as any);
+        }}
       >
         <View style={styles.avatarWrap}>
           <LinearGradient colors={grad} style={styles.avatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
@@ -86,7 +104,7 @@ function ChatRow({ chat, index, C }: { chat: ChatItem; index: number; C: AppColo
               style={[styles.lastMsg, chat.unread > 0 && styles.lastMsgUnread]}
               numberOfLines={1}
             >
-              {chat.lastMessage}
+              {chat.lastMessage || 'No messages yet'}
             </Text>
             {chat.unread > 0 && (
               <View style={styles.unreadBadge}>
@@ -134,12 +152,25 @@ export default function ChatsScreen() {
   const { colors: C } = useTheme();
   const styles = useMemo(() => makeStyles(C), [C]);
   const [query, setQuery] = useState('');
+  const [chats, setChats] = useState<ChatItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getConversations().then((previews) => {
+      setChats(previews.map(previewToItem));
+      setLoading(false);
+    });
+  }, []);
 
   const filtered = query.trim()
-    ? MOCK_CHATS.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || c.handle.includes(query.toLowerCase()))
-    : MOCK_CHATS;
+    ? chats.filter((c) =>
+        c.name.toLowerCase().includes(query.toLowerCase()) ||
+        c.handle.toLowerCase().includes(query.toLowerCase())
+      )
+    : chats;
 
-  const totalUnread = MOCK_CHATS.reduce((s, c) => s + c.unread, 0);
+  const totalUnread = chats.reduce((s, c) => s + c.unread, 0);
+  const liveChats = chats.filter((c) => c.isLive);
 
   return (
     <View style={styles.container}>
@@ -180,18 +211,26 @@ export default function ChatsScreen() {
         </View>
       </Animated.View>
 
-      {/* Active now */}
-      {!query && (
+      {/* Active now (live contacts) */}
+      {!query && liveChats.length > 0 && (
         <Animated.View entering={FadeInDown.delay(80).duration(400)}>
           <ScrollView
             horizontal showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.activeContent}
             style={styles.activeScroll}
           >
-            {MOCK_CHATS.filter((c) => c.isLive).map((c) => {
-              const grad = avatarGrad(c.id);
+            {liveChats.map((c) => {
+              const grad = avatarGrad(c.otherUserId || c.id);
               return (
-                <TouchableOpacity key={c.id} style={styles.activeBubble} activeOpacity={0.8}>
+                <TouchableOpacity
+                  key={c.id}
+                  style={styles.activeBubble}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push({ pathname: '/chat/[id]', params: { id: c.otherUserId, name: c.name, handle: c.handle } } as any);
+                  }}
+                >
                   <View style={styles.activeBubbleRing}>
                     <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
                     <LinearGradient colors={grad} style={styles.activeBubbleAvatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
@@ -209,7 +248,7 @@ export default function ChatsScreen() {
       )}
 
       {/* Divider label */}
-      <View style={[styles.sectionLabel]}>
+      <View style={styles.sectionLabel}>
         <Text style={[styles.sectionLabelText, { color: C.textMuted }]}>
           {query ? `Results for "${query}"` : 'All messages'}
         </Text>
@@ -221,11 +260,19 @@ export default function ChatsScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
         showsVerticalScrollIndicator={false}
       >
-        {filtered.length === 0 ? (
+        {loading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator color={C.pink} size="large" />
+          </View>
+        ) : filtered.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name="chatbubbles-outline" size={44} color={C.textMuted} />
-            <Text style={[styles.emptyTitle, { color: C.textPrimary }]}>No messages</Text>
-            <Text style={[styles.emptySub, { color: C.textMuted }]}>Start a conversation with a creator.</Text>
+            <Text style={[styles.emptyTitle, { color: C.textPrimary }]}>
+              {query ? 'No results' : 'No messages yet'}
+            </Text>
+            <Text style={[styles.emptySub, { color: C.textMuted }]}>
+              {query ? 'Try a different search.' : 'Follow creators and start a conversation!'}
+            </Text>
           </View>
         ) : (
           filtered.map((chat, i) => (
@@ -279,6 +326,7 @@ function makeStyles(C: AppColors) {
     sectionLabel: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 },
     sectionLabelText: { fontFamily: 'DMSans-Medium', fontSize: 12, letterSpacing: 0.3 },
     list: { flex: 1 },
+    loadingWrap: { paddingVertical: 60, alignItems: 'center' },
     divider: { height: 1, marginLeft: 78 },
     empty: { alignItems: 'center', paddingVertical: 60, gap: 10 },
     emptyTitle: { fontFamily: 'Syne-Bold', fontSize: 16 },

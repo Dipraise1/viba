@@ -8,6 +8,7 @@ import {
   Switch,
   Alert,
   Linking,
+  Share,
   TextInput,
   ActivityIndicator,
 } from 'react-native';
@@ -467,13 +468,13 @@ export default function SettingsScreen() {
       <SectionHeader title="Support" delay={500} C={C} />
       <Animated.View entering={FadeInDown.delay(520).duration(400)}>
         <GroupCard C={C}>
-          <SettingLink icon="help-circle-outline" label="Help Center" sub="FAQs, guides, contact" onPress={() => {}} C={C} />
+          <SettingLink icon="help-circle-outline" label="Help Center" sub="FAQs, guides, contact" onPress={() => Linking.openURL('https://viba.app/help')} C={C} />
           <Divider C={C} />
-          <SettingLink icon="bug-outline" label="Report a bug" onPress={() => {}} C={C} />
+          <SettingLink icon="bug-outline" label="Report a bug" onPress={() => Linking.openURL('mailto:support@viba.app?subject=Bug%20Report')} C={C} />
           <Divider C={C} />
-          <SettingLink icon="star-outline" label="Rate Viba" onPress={() => {}} C={C} />
+          <SettingLink icon="star-outline" label="Rate Viba" onPress={() => Linking.openURL('https://apps.apple.com/app/id6746543554')} C={C} />
           <Divider C={C} />
-          <SettingLink icon="share-social-outline" label="Share with friends" onPress={() => {}} C={C} />
+          <SettingLink icon="share-social-outline" label="Share with friends" onPress={() => Share.share({ message: 'Check out Viba — the all-in-one live streaming app for creators! https://viba.app' })} C={C} />
         </GroupCard>
       </Animated.View>
 
@@ -481,11 +482,11 @@ export default function SettingsScreen() {
       <SectionHeader title="Legal" delay={600} C={C} />
       <Animated.View entering={FadeInDown.delay(620).duration(400)}>
         <GroupCard C={C}>
-          <SettingLink icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => {}} C={C} />
+          <SettingLink icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => Linking.openURL('https://viba.app/privacy')} C={C} />
           <Divider C={C} />
-          <SettingLink icon="document-text-outline" label="Terms of Service" onPress={() => {}} C={C} />
+          <SettingLink icon="document-text-outline" label="Terms of Service" onPress={() => Linking.openURL('https://viba.app/terms')} C={C} />
           <Divider C={C} />
-          <SettingLink icon="code-slash-outline" label="Open Source Licenses" onPress={() => {}} C={C} />
+          <SettingLink icon="code-slash-outline" label="Open Source Licenses" onPress={() => Linking.openURL('https://viba.app/licenses')} C={C} />
         </GroupCard>
       </Animated.View>
 
@@ -762,6 +763,36 @@ const s = StyleSheet.create({
     fontFamily: 'DMSans-Bold',
     fontSize: 14,
     color: '#FFFFFF',
+  },
+  streamOptionHeader: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 6,
+    marginBottom: 2,
+  },
+  streamOptionBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 2,
+  },
+  streamOptionBadgeText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 10,
+    color: '#FFFFFF',
+    letterSpacing: 0.8,
+  },
+  streamOptionTitle: {
+    fontFamily: 'Syne-Bold',
+    fontSize: 16,
+  },
+  streamOptionSub: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 13,
+    lineHeight: 18,
   },
   versionBlock: { alignItems: 'center', paddingTop: 24, paddingBottom: 8, gap: 4 },
   versionText: { fontFamily: 'DMSans-Medium', fontSize: 13 },
