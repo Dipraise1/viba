@@ -185,6 +185,9 @@ export default function Home() {
     'Unified Comments',
     'Cross-Platform Gifts',
     'Real-Time Analytics',
+    'Viewer Rewards',
+    'AI Growth Insights',
+    'Seeker Ready',
     'Per-Platform Replies',
     'Gift Dashboard',
     'Earn $VIBA Tokens',
@@ -385,6 +388,138 @@ export default function Home() {
         <p className={s.platformsSub}>
           More platforms coming. Your audience is there — Viba will be too.
         </p>
+      </section>
+
+      {/* ── VIEWER REWARDS ─────────────────────────────────────────────── */}
+      <section className={s.rewards}>
+        <div className={s.rewardsLeft}>
+          <p className={s.sectionLabel}>Viewer Rewards</p>
+          <h2 className={s.rewardsHeadline}>
+            Your audience earns.<br />
+            <span className={s.rewardsHeadlineAccent}>You control how.</span>
+          </h2>
+          <p className={s.rewardsDesc}>
+            Share a portion of your $VIBA earnings directly with the viewers who show up for you. Set your own rules — reward watch time, loyalty, comments, or sharing. Your community, your economy.
+          </p>
+          <div className={s.rewardRules}>
+            {[
+              { icon: '⏱', title: 'Watch Time', desc: 'Base $VIBA per minute watched', value: '1x base', color: '#A855F7' },
+              { icon: '💬', title: 'Comments', desc: 'Bonus for engaging in chat', value: '2x boost', color: '#FF2D87' },
+              { icon: '🔁', title: 'Loyalty Bonus', desc: 'Extra for viewers who return', value: '1.5x boost', color: '#FFB800' },
+              { icon: '⭐', title: 'Welcome Bonus', desc: 'Attract new viewers with a reward', value: '+20 $V', color: '#7B2FFF' },
+            ].map((r) => (
+              <div key={r.title} className={s.rewardRule}>
+                <div className={s.rewardRuleIcon} style={{ background: r.color + '22' }}>{r.icon}</div>
+                <div className={s.rewardRuleText}>
+                  <div className={s.rewardRuleTitle}>{r.title}</div>
+                  <div className={s.rewardRuleDesc}>{r.desc}</div>
+                </div>
+                <span className={s.rewardRuleValue} style={{ color: r.color }}>{r.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className={s.rewardsRight}>
+          <div className={s.rewardMockCard}>
+            <div className={s.rewardMockHeader}>
+              <span className={s.rewardMockTitle}>Viewer Rewards</span>
+              <span className={s.rewardMockToggle}>ON</span>
+            </div>
+            <div className={s.rewardPoolRow}>
+              <span className={s.rewardPoolLabel}>Pool size — 20% of stream earnings</span>
+              <span className={s.rewardPoolPct}>20%</span>
+            </div>
+            <div className={s.rewardLeaders}>
+              {[
+                { rank: '🏆', name: '@nova_waves', platform: '#010101', earned: '+124 $V' },
+                { rank: '🥈', name: '@realbea', platform: '#E1306C', earned: '+98 $V' },
+                { rank: '🥉', name: '@streamlord', platform: '#9146FF', earned: '+86 $V' },
+                { rank: '#4', name: '@techvibes99', platform: '#FF0000', earned: '+64 $V' },
+                { rank: '#5', name: '@zara.live', platform: '#010101', earned: '+52 $V' },
+              ].map((v) => (
+                <div key={v.name} className={s.rewardLeaderRow}>
+                  <span className={s.rewardLeaderRank}>{v.rank}</span>
+                  <span className={s.rewardLeaderDot} style={{ background: v.platform }} />
+                  <span className={s.rewardLeaderName}>{v.name}</span>
+                  <span className={s.rewardLeaderEarned}>{v.earned}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── AI INSIGHTS ────────────────────────────────────────────────── */}
+      <section className={s.insights}>
+        <div className={s.insightsHeader}>
+          <p className={s.insightsEyebrow}>
+            <span>✦</span> Viba AI
+          </p>
+          <h2 className={s.insightsHeadline}>
+            Your data. Smarter growth.
+          </h2>
+          <p className={s.insightsDesc}>
+            Viba sees what no single platform can — your full audience across every stream. Our AI turns that into clear, actionable suggestions so you know exactly what to do next.
+          </p>
+        </div>
+
+        <div className={s.insightCards}>
+          {[
+            { icon: '📺', title: 'YouTube loves long-form', body: 'Your YouTube audience watches 24 min on average — 3x longer than TikTok. They want depth.', impact: '+40% retention' },
+            { icon: '🕖', title: 'Stream 2 hours earlier', body: 'Your combined peak audience is active at 6:30 PM. You\'re currently going live at 9 PM.', impact: '+28% reach' },
+            { icon: '💜', title: 'Twitch drives loyalty', body: 'Twitch is 18% of your viewers but 62% of your returning audience. It\'s your real community.', impact: 'Stronger core' },
+            { icon: '⚡', title: 'Rewards double retention', body: 'Streams with Viewer Rewards active have 2x returning viewer rate vs streams without.', impact: '2x return viewers' },
+            { icon: '📸', title: 'Instagram clips spread', body: 'Clips from Instagram Live get 3x more shares than TikTok clips. Lean into visual moments.', impact: '+15% followers' },
+            { icon: '🎯', title: 'Know your audience', body: 'Audience demographics, top countries, and gender splits — per platform, not averaged out.', impact: 'Better content' },
+          ].map((card) => (
+            <div key={card.title} className={s.insightCard}>
+              <div className={s.insightCardIcon}>{card.icon}</div>
+              <div className={s.insightCardTitle}>{card.title}</div>
+              <div className={s.insightCardBody}>{card.body}</div>
+              <div className={s.insightCardImpact}>↑ {card.impact}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── SEEKER READY ───────────────────────────────────────────────── */}
+      <section className={s.seeker}>
+        <div className={s.seekerGlow} aria-hidden />
+        <div className={s.seekerBadge}>
+          <span className={s.seekerBadgeDot} />
+          <span className={s.seekerBadgeText}>Solana Seeker Ready</span>
+        </div>
+        <h2 className={s.seekerHeadline}>
+          Built for the<br />
+          <span className={s.seekerHeadlineAccent}>Web3 mobile era.</span>
+        </h2>
+        <p className={s.seekerDesc}>
+          Viba is optimized for Solana Seeker — the dedicated Web3 phone with hardware wallet security. Stream, earn, and reward your community with the power of Solana built in.
+        </p>
+        <div className={s.seekerFeatures}>
+          {[
+            { icon: '🔐', title: 'Seed Vault Security', desc: 'Token transactions signed in hardware — your $VIBA never exposed to apps' },
+            { icon: '⚡', title: 'Real-Time Payments', desc: 'Instant SOL-speed token distribution to viewers mid-stream' },
+            { icon: '📍', title: 'Location-Verified Live', desc: 'GPS-attested streams prove your content is real and live' },
+            { icon: '🤖', title: 'AI on Device', desc: 'Growth insights run locally — your analytics stay private' },
+          ].map((f) => (
+            <div key={f.title} className={s.seekerFeature}>
+              <div className={s.seekerFeatureIcon}>{f.icon}</div>
+              <div>
+                <div className={s.seekerFeatureTitle}>{f.title}</div>
+                <div className={s.seekerFeatureDesc}>{f.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className={s.seekerSolanaRow}>
+          <span className={s.seekerSolanaText}>Powered by</span>
+          <svg width="80" height="14" viewBox="0 0 646 96" fill="none" aria-label="Solana">
+            <path d="M108.53 75.69L90.86 94.05c-.5.52-1.19.82-1.91.82H3.96C2.4 94.87.9 93.5.9 91.94c0-.74.28-1.44.78-1.96L19.35 71.6c.5-.52 1.19-.82 1.91-.82h84.99c1.56 0 2.84 1.36 2.84 2.91 0 .73-.28 1.44-.56 2zm0-55.38L90.86 2c-.5-.52-1.19-.82-1.91-.82H3.96C2.4 1.18.9 2.54.9 4.1c0 .74.28 1.44.78 1.96l17.67 18.38c.5.52 1.19.82 1.91.82h84.99c1.56 0 2.84-1.36 2.84-2.91 0-.73-.28-1.44-.56-2zM3.96 47.6h84.99c.72 0 1.41.3 1.91.82l17.67 18.38c.28.52.56 1.22.56 1.95 0 1.56-1.28 2.91-2.84 2.91H21.26c-.72 0-1.41-.3-1.91-.82L1.68 52.46C1.18 51.94.9 51.24.9 50.5c0-1.56 1.28-2.91 2.84-2.91h.22z" fill="#14F195"/>
+            <text x="130" y="76" fontFamily="Arial" fontSize="72" fontWeight="700" fill="white">Solana</text>
+          </svg>
+        </div>
       </section>
 
       {/* ── BOTTOM CTA ─────────────────────────────────────────────────── */}
