@@ -427,6 +427,53 @@ function QuickLinks() {
         </LinearGradient>
       </TouchableOpacity>
     </Animated.View>
+
+    {/* New feature quick links */}
+    <Animated.View entering={FadeInDown.delay(300).duration(400)} style={ql.row}>
+      <TouchableOpacity
+        style={ql.card}
+        activeOpacity={0.8}
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/viewer-rewards'); }}
+      >
+        <LinearGradient
+          colors={['rgba(168,85,247,0.15)', 'rgba(168,85,247,0.05)']}
+          style={ql.grad}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={[ql.iconWrap, { backgroundColor: 'rgba(168,85,247,0.18)' }]}>
+            <Ionicons name="people-outline" size={20} color="#A855F7" />
+          </View>
+          <Text style={ql.cardTitle}>Viewer Rewards</Text>
+          <Text style={ql.cardSub}>Control who earns</Text>
+          <View style={[ql.arrow, { backgroundColor: 'rgba(168,85,247,0.18)' }]}>
+            <Ionicons name="arrow-forward" size={14} color="#A855F7" />
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={ql.card}
+        activeOpacity={0.8}
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/growth-insights'); }}
+      >
+        <LinearGradient
+          colors={['rgba(0,217,126,0.12)', 'rgba(0,217,126,0.04)']}
+          style={ql.grad}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={[ql.iconWrap, { backgroundColor: 'rgba(0,217,126,0.15)' }]}>
+            <Ionicons name="sparkles-outline" size={20} color="#00D97E" />
+          </View>
+          <Text style={ql.cardTitle}>AI Insights</Text>
+          <Text style={ql.cardSub}>Grow your audience</Text>
+          <View style={[ql.arrow, { backgroundColor: 'rgba(0,217,126,0.15)' }]}>
+            <Ionicons name="arrow-forward" size={14} color="#00D97E" />
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
