@@ -1,0 +1,73 @@
+{
+  "expo": {
+    "name": "Viba",
+    "slug": "viba",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#05050F"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.viba.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0A12"
+      },
+      "package": "com.viba.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Viba needs camera access to broadcast your live stream.",
+          "microphonePermission": "Viba needs microphone access to include audio in your live stream.",
+          "recordAudioAndroid": true
+        }
+      ],
+      "expo-web-browser",
+      "expo-secure-store",
+      "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Viba needs access to your photos to set a profile picture."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#FF2D87",
+          "sounds": []
+        }
+      ]
+    ],
+    "scheme": "viba",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4a103aee-dff5-403d-a508-c3b6488b3f41"
+      }
+    },
+    "owner": "deepraise"
+  }
+}
