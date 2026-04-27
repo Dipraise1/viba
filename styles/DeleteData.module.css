@@ -1,0 +1,299 @@
+.page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 120px 40px 100px;
+}
+
+.header {
+  margin-bottom: 52px;
+  padding-bottom: 40px;
+  border-bottom: 1px solid var(--border);
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--white-35);
+  display: block;
+  margin-bottom: 20px;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(32px, 5vw, 52px);
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  color: var(--white);
+  margin-bottom: 16px;
+}
+
+.subtitle {
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.7;
+  color: var(--white-60);
+  max-width: 500px;
+}
+
+/* ── SCOPE BLOCK ───────────────────────────── */
+.scopeBlock {
+  margin-bottom: 28px;
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--white-03);
+}
+
+.scopeTitle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--white-60);
+  letter-spacing: 0.2px;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  font-size: 11px;
+}
+
+.scopeList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scopeList li {
+  display: flex;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 300;
+  color: var(--white-60);
+  line-height: 1.5;
+}
+
+.scopeDash {
+  color: var(--pink);
+  flex-shrink: 0;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+/* ── NOTICE ───────────────────────────────── */
+.notice {
+  display: flex;
+  gap: 14px;
+  padding: 20px 24px;
+  border: 1px solid rgba(255,184,0,0.15);
+  border-radius: 12px;
+  background: rgba(255,184,0,0.04);
+  margin-bottom: 40px;
+}
+
+.noticeIcon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.noticeText {
+  font-size: 13px;
+  font-weight: 300;
+  line-height: 1.65;
+  color: var(--white-60);
+}
+
+.noticeText strong {
+  font-weight: 500;
+  color: rgba(255,184,0,0.8);
+}
+
+/* ── FORM ─────────────────────────────────── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-bottom: 40px;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--white-35);
+}
+
+.input {
+  width: 100%;
+  padding: 14px 18px;
+  background: var(--white-06);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--white);
+  font-size: 15px;
+  font-weight: 300;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+  -webkit-appearance: none;
+}
+
+.input::placeholder {
+  color: var(--white-35);
+}
+
+.input:focus {
+  border-color: rgba(255,255,255,0.2);
+  background: var(--white-06);
+}
+
+.inputError {
+  border-color: rgba(255,45,135,0.5) !important;
+}
+
+.errorMsg {
+  font-size: 13px;
+  color: var(--pink);
+}
+
+.submitBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  padding: 15px 32px;
+  border-radius: 100px;
+  background: linear-gradient(110deg, #FF2D87 0%, #A855F7 50%, #7B2FFF 100%);
+  color: #FFFFFF;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.2s;
+  align-self: flex-start;
+  box-shadow: 0 0 32px rgba(255,45,135,0.25);
+}
+
+.submitBtn:hover:not(:disabled) {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.submitBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Spinner */
+.spinner {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #FFFFFF;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.formNote {
+  font-size: 13px;
+  font-weight: 300;
+  color: var(--white-35);
+  line-height: 1.5;
+}
+
+/* ── CONTACT ──────────────────────────────── */
+.contact {
+  padding-top: 28px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 300;
+  color: var(--white-35);
+}
+
+.emailLink {
+  color: var(--pink);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.emailLink:hover {
+  border-bottom-color: var(--pink);
+}
+
+/* ── SUCCESS STATE ────────────────────────── */
+.successState {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 40px;
+  border: 1px solid rgba(255,45,135,0.2);
+  border-radius: 20px;
+  background: rgba(255,45,135,0.04);
+  animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.successIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(255,45,135,0.1);
+  border: 1px solid rgba(255,45,135,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.successTitle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 24px;
+  letter-spacing: -0.02em;
+  color: var(--white);
+}
+
+.successDesc {
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.75;
+  color: var(--white-60);
+}
+
+.successDesc strong {
+  font-weight: 500;
+  color: var(--white);
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 100px 20px 80px;
+  }
+
+  .scopeBlock {
+    padding: 20px;
+  }
+
+  .submitBtn {
+    width: 100%;
+  }
+}
