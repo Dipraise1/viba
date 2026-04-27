@@ -26,38 +26,42 @@ const PERIODS: { id: Period; label: string }[] = [
 
 const GIFT_DATA: Record<Period, { total: string; breakdown: { platform: PlatformId; amount: string; gifts: number }[] }> = {
   today: {
-    total: '$47',
+    total: '$91',
     breakdown: [
       { platform: 'tiktok', amount: '$24', gifts: 32 },
       { platform: 'instagram', amount: '$14', gifts: 18 },
       { platform: 'twitch', amount: '$9', gifts: 6 },
+      { platform: 'pumpfun', amount: '$44', gifts: 12 },
     ],
   },
   week: {
-    total: '$312',
+    total: '$530',
     breakdown: [
       { platform: 'tiktok', amount: '$148', gifts: 210 },
       { platform: 'instagram', amount: '$87', gifts: 112 },
       { platform: 'twitch', amount: '$51', gifts: 34 },
       { platform: 'youtube', amount: '$26', gifts: 28 },
+      { platform: 'pumpfun', amount: '$218', gifts: 86 },
     ],
   },
   month: {
-    total: '$1,240',
+    total: '$1,560',
     breakdown: [
       { platform: 'tiktok', amount: '$580', gifts: 820 },
       { platform: 'instagram', amount: '$340', gifts: 440 },
       { platform: 'twitch', amount: '$210', gifts: 140 },
       { platform: 'youtube', amount: '$110', gifts: 105 },
+      { platform: 'pumpfun', amount: '$320', gifts: 210 },
     ],
   },
   all: {
-    total: '$4,890',
+    total: '$5,740',
     breakdown: [
       { platform: 'tiktok', amount: '$2,200', gifts: 3100 },
       { platform: 'instagram', amount: '$1,300', gifts: 1800 },
       { platform: 'twitch', amount: '$860', gifts: 560 },
       { platform: 'youtube', amount: '$530', gifts: 490 },
+      { platform: 'pumpfun', amount: '$850', gifts: 640 },
     ],
   },
 };

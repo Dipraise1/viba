@@ -1,6 +1,6 @@
 import { Colors } from './colors';
 
-export type PlatformId = 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'twitch';
+export type PlatformId = 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'twitch' | 'pumpfun';
 
 export interface Platform {
   id: PlatformId;
@@ -51,6 +51,14 @@ export const PLATFORMS: Platform[] = [
     color: '#FFFFFF',
     bgColor: '#9146FF',
     gradient: ['#9146FF', '#6B2ECC'],
+  },
+  {
+    id: 'pumpfun',
+    name: 'Pump.fun',
+    icon: 'rocket',
+    color: '#000000',
+    bgColor: '#00FF88',
+    gradient: ['#00FF88', '#00C950'],
   },
 ];
 

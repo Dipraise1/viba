@@ -91,11 +91,19 @@ const INSIGHTS: Insight[] = [
     action: 'Keep TikTok Q&A segments tight and fast',
     impact: '+22% completion',
   },
+  {
+    id: '7', priority: 'high', icon: 'rocket', platform: 'pumpfun',
+    title: 'Pump.fun is your fastest-growing audience',
+    body: 'Your Pump.fun viewers have 82% retention — the highest of any platform — and grew 94% this month. They stick around and they buy in.',
+    action: 'Mention your token and bonding curve during streams',
+    impact: '+94% growth',
+  },
 ];
 
 const PLATFORM_STATS: PlatformStat[] = [
   { id: 'youtube', watchTime: 24, retention: '68%', topContent: 'Long-form tutorials', growth: '+12%', positive: true },
   { id: 'twitch', watchTime: 19, retention: '71%', topContent: 'Gaming & live reactions', growth: '+8%', positive: true },
+  { id: 'pumpfun', watchTime: 14, retention: '82%', topContent: 'Token launches & alpha', growth: '+94%', positive: true },
   { id: 'instagram', watchTime: 7, retention: '41%', topContent: 'Visual moments & lifestyle', growth: '+22%', positive: true },
   { id: 'tiktok', watchTime: 4, retention: '28%', topContent: 'Short clips & reactions', growth: '+31%', positive: true },
   { id: 'facebook', watchTime: 11, retention: '38%', topContent: 'Community discussions', growth: '-3%', positive: false },

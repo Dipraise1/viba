@@ -82,6 +82,10 @@ const FAKE_COMMENTS: Omit<LiveComment, 'id'>[] = [
   { platform: 'youtube', username: 'CodeWithMe', text: 'subbed!', type: 'comment', color: '#FFFFFF' },
   { platform: 'twitch', username: 'pixel_rush', text: '', type: 'gift', giftName: 'Star', giftCount: 200, color: '#FFB800' },
   { platform: 'facebook', username: 'Tom B', text: 'amazing content as always', type: 'comment', color: '#FFFFFF' },
+  { platform: 'pumpfun', username: 'sol_degen', text: 'just aped in 🚀🚀', type: 'comment', color: '#00FF88' },
+  { platform: 'pumpfun', username: 'pump_maxi', text: '', type: 'gift', giftName: 'Rocket', giftCount: 1, color: '#00FF88' },
+  { platform: 'pumpfun', username: 'bonding_curve', text: 'chart looking clean rn', type: 'comment', color: '#00FF88' },
+  { platform: 'pumpfun', username: 'solana_ape', text: '', type: 'follow', color: '#00D97E' },
 ];
 
 // ─── Pulsing ring ─────────────────────────────────────────────────────────────
