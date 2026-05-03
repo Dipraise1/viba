@@ -28,6 +28,15 @@ const PERIODS: { id: GiftPeriod; label: string }[] = [
   { id: 'all', label: 'All time' },
 ];
 
+const GIFT_COLORS = [
+  ['#FF2D87', '#FF6BB3'],
+  ['#7B2FFF', '#A855F7'],
+  ['#FFB800', '#FFD460'],
+  ['#00D97E', '#34EEA0'],
+  ['#3B82F6', '#60A5FA'],
+  ['#F97316', '#FDBA74'],
+];
+
 function timeAgo(iso: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60) return 'just now';
@@ -39,6 +48,20 @@ function timeAgo(iso: string): string {
 function formatUsd(usd: number): string {
   if (usd < 0.01) return '<$0.01';
   return `$${usd.toFixed(2)}`;
+}
+
+function GiftIconBadge({ index, size = 44 }: { index: number; size?: number }) {
+  const colors = GIFT_COLORS[index % GIFT_COLORS.length] as [string, string];
+  return (
+    <LinearGradient
+      colors={colors}
+      style={[styles.giftIconBadge, { width: size, height: size, borderRadius: size * 0.35 }]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+    >
+      <Ionicons name="gift" size={size * 0.46} color="#FFFFFF" />
+    </LinearGradient>
+  );
 }
 
 export default function GiftsScreen() {
@@ -84,9 +107,12 @@ export default function GiftsScreen() {
     >
       {/* Header */}
       <Animated.View entering={FadeInDown.delay(0).duration(500)} style={styles.header}>
-        <Text style={[styles.headerTitle, { color: C.textPrimary }]}>Gifts</Text>
-        <TouchableOpacity style={[styles.exportBtn, { borderColor: C.border }]} activeOpacity={0.7}>
-          <Ionicons name="download-outline" size={16} color={C.textSecondary} />
+        <View>
+          <Text style={[styles.headerTitle, { color: C.textPrimary }]}>Gifts</Text>
+          <Text style={[styles.headerSub, { color: C.textMuted }]}>Track what your viewers send</Text>
+        </View>
+        <TouchableOpacity style={[styles.exportBtn, { borderColor: C.border, backgroundColor: C.bgCard }]} activeOpacity={0.7}>
+          <Ionicons name="download-outline" size={15} color={C.textSecondary} />
           <Text style={[styles.exportText, { color: C.textSecondary }]}>Export</Text>
         </TouchableOpacity>
       </Animated.View>
@@ -96,21 +122,24 @@ export default function GiftsScreen() {
         {PERIODS.map((p) => (
           <TouchableOpacity
             key={p.id}
-            style={[
-              styles.periodPill,
-              { borderColor: C.border },
-              period === p.id && { backgroundColor: C.bgCard, borderColor: C.textPrimary + '40' },
-            ]}
             onPress={() => setPeriod(p.id)}
             activeOpacity={0.7}
+            style={styles.periodPillWrap}
           >
-            <Text style={[
-              styles.periodText,
-              { color: C.textMuted },
-              period === p.id && { color: C.textPrimary },
-            ]}>
-              {p.label}
-            </Text>
+            {period === p.id ? (
+              <LinearGradient
+                colors={['#FF2D87', '#7B2FFF']}
+                style={styles.periodPillActive}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.periodTextActive}>{p.label}</Text>
+              </LinearGradient>
+            ) : (
+              <View style={[styles.periodPill, { borderColor: C.border }]}>
+                <Text style={[styles.periodText, { color: C.textMuted }]}>{p.label}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         ))}
       </Animated.View>
@@ -120,8 +149,19 @@ export default function GiftsScreen() {
           <ActivityIndicator color={C.pink} size="large" />
         </View>
       ) : isEmpty ? (
-        <Animated.View entering={FadeInDown.delay(120).duration(500)} style={[styles.emptyCard, { borderColor: C.border }]}>
-          <Text style={styles.emptyEmoji}>🎁</Text>
+        <Animated.View entering={FadeInDown.delay(120).duration(500)} style={[styles.emptyCard, { borderColor: C.border, backgroundColor: C.bgCard }]}>
+          <LinearGradient
+            colors={['rgba(255,45,135,0.08)', 'rgba(123,47,255,0.08)']}
+            style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
+          />
+          <LinearGradient
+            colors={['#FF2D87', '#7B2FFF']}
+            style={styles.emptyIconCircle}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <Ionicons name="gift" size={32} color="#FFFFFF" />
+          </LinearGradient>
           <Text style={[styles.emptyTitle, { color: C.textPrimary }]}>No gifts yet</Text>
           <Text style={[styles.emptySub, { color: C.textMuted }]}>Go live to start receiving gifts from your viewers</Text>
         </Animated.View>
@@ -131,28 +171,47 @@ export default function GiftsScreen() {
           <Animated.View entering={FadeInDown.delay(120).duration(500)}>
             <View style={[styles.totalCard, { borderColor: C.border }]}>
               <LinearGradient
-                colors={['rgba(255,45,135,0.12)', 'rgba(123,47,255,0.12)']}
-                style={[StyleSheet.absoluteFill, { borderRadius: 18 }]}
+                colors={['rgba(255,45,135,0.14)', 'rgba(123,47,255,0.14)']}
+                style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               />
-              <Text style={[styles.totalLabel, { color: C.textSecondary }]}>Total earned</Text>
-              <Text style={[styles.totalAmount, { color: C.textPrimary }]}>
-                {(analytics?.totalTokens ?? 0).toLocaleString()}
-                <Text style={[styles.totalUnit, { color: C.textMuted }]}> $VIBA</Text>
-              </Text>
-              <Text style={[styles.totalUsdSub, { color: C.textMuted }]}>
-                ≈ {formatUsd(analytics?.totalUsd ?? 0)} USD equivalent
-              </Text>
+              <View style={styles.totalTop}>
+                <View>
+                  <Text style={[styles.totalLabel, { color: C.textSecondary }]}>Total earned</Text>
+                  <Text style={[styles.totalAmount, { color: C.textPrimary }]}>
+                    {(analytics?.totalTokens ?? 0).toLocaleString()}
+                    <Text style={[styles.totalUnit, { color: C.textMuted }]}> $VIBA</Text>
+                  </Text>
+                  <Text style={[styles.totalUsdSub, { color: C.textMuted }]}>
+                    ≈ {formatUsd(analytics?.totalUsd ?? 0)} USD equivalent
+                  </Text>
+                </View>
+                <LinearGradient
+                  colors={['#FF2D87', '#7B2FFF']}
+                  style={styles.totalIconBg}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Ionicons name="sparkles" size={22} color="#FFFFFF" />
+                </LinearGradient>
+              </View>
+
+              <View style={[styles.totalDivider, { backgroundColor: C.border }]} />
+
               <View style={styles.totalMeta}>
                 <View style={styles.totalMetaItem}>
-                  <Ionicons name="gift-outline" size={14} color={C.textMuted} />
+                  <View style={[styles.metaIconBg, { backgroundColor: 'rgba(255,45,135,0.15)' }]}>
+                    <Ionicons name="gift-outline" size={13} color="#FF2D87" />
+                  </View>
                   <Text style={[styles.totalMetaText, { color: C.textMuted }]}>
                     {analytics?.totalCount ?? 0} gifts received
                   </Text>
                 </View>
                 <View style={styles.totalMetaItem}>
-                  <Ionicons name="layers-outline" size={14} color={C.textMuted} />
+                  <View style={[styles.metaIconBg, { backgroundColor: 'rgba(123,47,255,0.15)' }]}>
+                    <Ionicons name="layers-outline" size={13} color="#7B2FFF" />
+                  </View>
                   <Text style={[styles.totalMetaText, { color: C.textMuted }]}>
                     {analytics?.breakdown.length ?? 0} gift types
                   </Text>
@@ -171,6 +230,7 @@ export default function GiftsScreen() {
               <View style={styles.breakdownList}>
                 {analytics!.breakdown.map((b, index) => {
                   const pct = b.tokens / maxTokens;
+                  const colors = GIFT_COLORS[index % GIFT_COLORS.length] as [string, string];
                   return (
                     <Animated.View
                       key={b.giftId}
@@ -178,17 +238,19 @@ export default function GiftsScreen() {
                       style={[styles.breakdownCard, { borderColor: C.border, backgroundColor: C.bgCard }]}
                     >
                       <View style={styles.breakdownTop}>
-                        <Text style={styles.giftEmojiLg}>{b.emoji}</Text>
-                        <Text style={[styles.breakdownName, { color: C.textPrimary }]}>{b.name}</Text>
-                        <View style={{ flex: 1 }} />
-                        <Text style={[styles.breakdownGifts, { color: C.textMuted }]}>{b.count}x</Text>
+                        <GiftIconBadge index={index} size={44} />
+                        <View style={styles.breakdownMid}>
+                          <Text style={[styles.breakdownName, { color: C.textPrimary }]}>{b.name}</Text>
+                          <Text style={[styles.breakdownGifts, { color: C.textMuted }]}>{b.count} received</Text>
+                        </View>
                         <Text style={[styles.breakdownAmount, { color: C.textPrimary }]}>
-                          {b.tokens.toLocaleString()} <Text style={{ fontSize: 11, color: C.textMuted }}>$V</Text>
+                          {b.tokens.toLocaleString()}
+                          <Text style={[styles.breakdownUnit, { color: C.textMuted }]}> $V</Text>
                         </Text>
                       </View>
                       <View style={[styles.barTrack, { backgroundColor: C.border }]}>
                         <LinearGradient
-                          colors={['#FF2D87', '#7B2FFF']}
+                          colors={colors}
                           style={[styles.barFill, { width: `${Math.max(pct * 100, 4)}%` }]}
                           start={{ x: 0, y: 0 }}
                           end={{ x: 1, y: 0 }}
@@ -205,28 +267,31 @@ export default function GiftsScreen() {
           {recentGifts.length > 0 && (
             <>
               <Animated.View entering={FadeInDown.delay(480).duration(500)}>
-                <Text style={[styles.sectionTitle, { marginTop: 8, color: C.textPrimary }]}>Recent gifts</Text>
+                <Text style={[styles.sectionTitle, { marginTop: 4, color: C.textPrimary }]}>Recent gifts</Text>
               </Animated.View>
 
-              <View style={styles.recentList}>
+              <View style={[styles.recentCard, { borderColor: C.border, backgroundColor: C.bgCard }]}>
                 {recentGifts.map((g, index) => (
                   <Animated.View
                     key={g.id}
                     entering={FadeInDown.delay(520 + index * 50).duration(400)}
-                    style={[styles.giftRow, { borderBottomColor: C.border }]}
+                    style={[
+                      styles.giftRow,
+                      { borderBottomColor: C.border },
+                      index === recentGifts.length - 1 && { borderBottomWidth: 0 },
+                    ]}
                   >
-                    <View style={styles.giftLeft}>
-                      <Text style={styles.giftEmojiMd}>{g.giftEmoji}</Text>
-                      <View style={styles.giftInfo}>
-                        <Text style={[styles.giftName, { color: C.textPrimary }]}>
-                          {g.quantity > 1 ? `${g.quantity}x ` : ''}{g.giftName}
-                        </Text>
-                        <Text style={[styles.giftFrom, { color: C.textMuted }]}>from {g.senderHandle}</Text>
-                      </View>
+                    <GiftIconBadge index={index} size={38} />
+                    <View style={styles.giftInfo}>
+                      <Text style={[styles.giftName, { color: C.textPrimary }]}>
+                        {g.quantity > 1 ? `${g.quantity}x ` : ''}{g.giftName}
+                      </Text>
+                      <Text style={[styles.giftFrom, { color: C.textMuted }]}>from {g.senderHandle}</Text>
                     </View>
                     <View style={styles.giftRight}>
                       <Text style={[styles.giftValue, { color: C.textPrimary }]}>
-                        +{g.tokensSpent} <Text style={{ fontSize: 11, color: C.textMuted }}>$V</Text>
+                        +{g.tokensSpent}
+                        <Text style={[styles.giftValueUnit, { color: C.textMuted }]}> $V</Text>
                       </Text>
                       <Text style={[styles.giftTime, { color: C.textMuted }]}>{timeAgo(g.createdAt)}</Text>
                     </View>
@@ -244,44 +309,62 @@ export default function GiftsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingHorizontal: 20, gap: 14 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerTitle: { fontFamily: 'Syne-ExtraBold', fontSize: 28 },
-  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8 },
+
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
+  headerTitle: { fontFamily: 'Syne-ExtraBold', fontSize: 30 },
+  headerSub: { fontFamily: 'DMSans-Regular', fontSize: 13, marginTop: 2 },
+  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 9 },
   exportText: { fontFamily: 'DMSans-Medium', fontSize: 13 },
+
   periodRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  periodPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+  periodPillWrap: {},
+  periodPillActive: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+  periodTextActive: { fontFamily: 'DMSans-Bold', fontSize: 13, color: '#FFFFFF' },
+  periodPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   periodText: { fontFamily: 'DMSans-Medium', fontSize: 13 },
+
   loadingWrap: { paddingVertical: 60, alignItems: 'center' },
-  emptyCard: { borderRadius: 18, borderWidth: 1, padding: 32, alignItems: 'center', gap: 10 },
-  emptyEmoji: { fontSize: 48 },
+
+  emptyCard: { borderRadius: 20, borderWidth: 1, padding: 40, alignItems: 'center', gap: 12, overflow: 'hidden' },
+  emptyIconCircle: { width: 72, height: 72, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   emptyTitle: { fontFamily: 'Syne-Bold', fontSize: 18 },
-  emptySub: { fontFamily: 'DMSans-Regular', fontSize: 14, textAlign: 'center', lineHeight: 20 },
-  totalCard: { borderRadius: 18, borderWidth: 1, padding: 24, overflow: 'hidden', gap: 4 },
-  totalLabel: { fontFamily: 'DMSans-Medium', fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 },
-  totalAmount: { fontFamily: 'Syne-ExtraBold', fontSize: 44, lineHeight: 48, marginTop: 4 },
-  totalUnit: { fontSize: 16 },
-  totalUsdSub: { fontFamily: 'DMSans-Regular', fontSize: 13, marginTop: 2 },
-  totalMeta: { flexDirection: 'row', gap: 16, marginTop: 8 },
-  totalMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  emptySub: { fontFamily: 'DMSans-Regular', fontSize: 14, textAlign: 'center', lineHeight: 21, maxWidth: 240 },
+
+  totalCard: { borderRadius: 20, borderWidth: 1, padding: 22, overflow: 'hidden', gap: 16 },
+  totalTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  totalLabel: { fontFamily: 'DMSans-Medium', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 4 },
+  totalAmount: { fontFamily: 'Syne-ExtraBold', fontSize: 40, lineHeight: 46 },
+  totalUnit: { fontSize: 15 },
+  totalUsdSub: { fontFamily: 'DMSans-Regular', fontSize: 13, marginTop: 4 },
+  totalIconBg: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  totalDivider: { height: 1 },
+  totalMeta: { flexDirection: 'row', gap: 20 },
+  totalMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  metaIconBg: { width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   totalMetaText: { fontFamily: 'DMSans-Regular', fontSize: 13 },
-  sectionTitle: { fontFamily: 'Syne-Bold', fontSize: 16 },
+
+  sectionTitle: { fontFamily: 'Syne-Bold', fontSize: 17, marginTop: 4 },
+
   breakdownList: { gap: 10 },
-  breakdownCard: { borderRadius: 12, borderWidth: 1, padding: 14, gap: 10 },
-  breakdownTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  giftEmojiLg: { fontSize: 26 },
-  giftEmojiMd: { fontSize: 22 },
+  breakdownCard: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 12 },
+  breakdownTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  breakdownMid: { flex: 1, gap: 3 },
   breakdownName: { fontFamily: 'DMSans-Bold', fontSize: 14 },
-  breakdownGifts: { fontFamily: 'DMSans-Regular', fontSize: 12, marginRight: 8 },
+  breakdownGifts: { fontFamily: 'DMSans-Regular', fontSize: 12 },
   breakdownAmount: { fontFamily: 'Syne-Bold', fontSize: 16 },
-  barTrack: { height: 4, borderRadius: 2, overflow: 'hidden' },
-  barFill: { height: 4, borderRadius: 2 },
-  recentList: { gap: 0 },
-  giftRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1 },
-  giftLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  giftInfo: { gap: 2, flex: 1 },
+  breakdownUnit: { fontSize: 11 },
+  barTrack: { height: 5, borderRadius: 3, overflow: 'hidden' },
+  barFill: { height: 5, borderRadius: 3 },
+
+  recentCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  giftRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 14, borderBottomWidth: 1, gap: 12 },
+  giftInfo: { flex: 1, gap: 3 },
   giftName: { fontFamily: 'DMSans-Bold', fontSize: 14 },
   giftFrom: { fontFamily: 'DMSans-Regular', fontSize: 12 },
-  giftRight: { alignItems: 'flex-end', gap: 2 },
+  giftRight: { alignItems: 'flex-end', gap: 3 },
   giftValue: { fontFamily: 'Syne-Bold', fontSize: 15 },
+  giftValueUnit: { fontSize: 11 },
   giftTime: { fontFamily: 'DMSans-Regular', fontSize: 11 },
+
+  giftIconBadge: { alignItems: 'center', justifyContent: 'center' },
 });

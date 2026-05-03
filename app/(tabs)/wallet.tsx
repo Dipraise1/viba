@@ -80,6 +80,7 @@ function BalanceCard({
   const card = useMemo(() => makeCardStyles(C), [C]);
   return (
     <Animated.View entering={FadeInDown.delay(60).duration(500)}>
+      <TouchableOpacity activeOpacity={0.92} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/viba-balance'); }}>
       <LinearGradient
         colors={['#3D1880', '#1A0A3A', '#110620']}
         style={card.wrap}
@@ -126,33 +127,39 @@ function BalanceCard({
         {/* Subtle grid lines */}
         <View style={[card.gridLine, { top: '40%', opacity: 0.06 }]} />
         <View style={[card.gridLine, { top: '70%', opacity: 0.04 }]} />
+        {/* Tap hint */}
+        <View style={card.tapHint}>
+          <Ionicons name="chevron-forward" size={12} color="rgba(255,255,255,0.3)" />
+        </View>
       </LinearGradient>
+      </TouchableOpacity>
     </Animated.View>
   );
 }
 
 function makeCardStyles(C: AppColors) {
   return StyleSheet.create({
-    wrap: { borderRadius: 22, padding: 22, borderWidth: 1, borderColor: 'rgba(168,85,247,0.25)', overflow: 'hidden', gap: 16 },
+    wrap: { borderRadius: 20, padding: 16, borderWidth: 1, borderColor: 'rgba(168,85,247,0.25)', overflow: 'hidden', gap: 10 },
     glowTop: { position: 'absolute', top: -40, left: -20, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(123,47,255,0.32)' },
     glowBottom: { position: 'absolute', bottom: -60, right: -30, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,45,135,0.22)' },
     gridLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF' },
     topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    tokenBadge: { backgroundColor: 'rgba(168,85,247,0.2)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(168,85,247,0.35)', paddingHorizontal: 10, paddingVertical: 4 },
-    tokenBadgeText: { fontFamily: 'Syne-Bold', fontSize: 12, color: C.viba, letterSpacing: 1 },
-    statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4 },
+    tokenBadge: { backgroundColor: 'rgba(168,85,247,0.2)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(168,85,247,0.35)', paddingHorizontal: 8, paddingVertical: 3 },
+    tokenBadgeText: { fontFamily: 'Syne-Bold', fontSize: 11, color: C.viba, letterSpacing: 1 },
+    statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3 },
     statusOk: { backgroundColor: 'rgba(0,217,126,0.1)', borderColor: 'rgba(0,217,126,0.2)' },
     statusWarn: { backgroundColor: 'rgba(255,184,0,0.1)', borderColor: 'rgba(255,184,0,0.2)' },
     statusDot: { width: 5, height: 5, borderRadius: 3 },
-    statusText: { fontFamily: 'DMSans-Medium', fontSize: 11 },
-    balanceRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-    balance: { fontFamily: 'Syne-ExtraBold', fontSize: 52, color: '#FFFFFF', lineHeight: 54, letterSpacing: -1 },
-    balanceUnit: { fontFamily: 'DMSans-Regular', fontSize: 14, color: 'rgba(255,255,255,0.4)', marginBottom: 8 },
-    bottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: -4 },
+    statusText: { fontFamily: 'DMSans-Medium', fontSize: 10 },
+    balanceRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
+    balance: { fontFamily: 'Syne-ExtraBold', fontSize: 38, color: '#FFFFFF', lineHeight: 40, letterSpacing: -1 },
+    balanceUnit: { fontFamily: 'DMSans-Regular', fontSize: 13, color: 'rgba(255,255,255,0.4)', marginBottom: 5 },
+    bottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: -2 },
     earnRate: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-    earnRateText: { fontFamily: 'DMSans-Regular', fontSize: 12, color: 'rgba(168,85,247,0.8)' },
-    todayBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.successDim, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(0,217,126,0.2)' },
-    todayText: { fontFamily: 'DMSans-Bold', fontSize: 12, color: C.success },
+    earnRateText: { fontFamily: 'DMSans-Regular', fontSize: 11, color: 'rgba(168,85,247,0.8)' },
+    todayBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.successDim, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: 'rgba(0,217,126,0.2)' },
+    todayText: { fontFamily: 'DMSans-Bold', fontSize: 11, color: C.success },
+    tapHint: { position: 'absolute', top: 14, right: 14 },
   });
 }
 
@@ -218,9 +225,9 @@ function makeActionStyles(C: AppColors) {
   return StyleSheet.create({
     wrap: {},
     btn: { alignItems: 'center', gap: 7 },
-    iconCircle: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-    iconCircleOutline: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bgCard, borderWidth: 1, borderColor: C.border },
-    label: { fontFamily: 'DMSans-Medium', fontSize: 12, color: C.textMuted },
+    iconCircle: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+    iconCircleOutline: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bgCard, borderWidth: 1, borderColor: C.border },
+    label: { fontFamily: 'DMSans-Medium', fontSize: 11, color: C.textMuted },
     labelPrimary: { color: C.textPrimary },
     soonBadge: { backgroundColor: C.pinkDim, borderRadius: 5, paddingHorizontal: 5, paddingVertical: 1, marginTop: -4 },
     soonText: { fontFamily: 'DMSans-Bold', fontSize: 9, color: C.pink },
@@ -312,9 +319,9 @@ function makeChartStyles(C: AppColors) {
     title: { fontFamily: 'Syne-Bold', fontSize: 15, color: C.textPrimary },
     sub: { fontFamily: 'DMSans-Regular', fontSize: 12, color: C.textMuted, marginTop: 2 },
     total: { alignItems: 'flex-end' },
-    totalNum: { fontFamily: 'Syne-ExtraBold', fontSize: 22, color: C.viba },
+    totalNum: { fontFamily: 'Syne-ExtraBold', fontSize: 18, color: C.viba },
     totalUnit: { fontFamily: 'DMSans-Regular', fontSize: 11, color: C.textMuted, marginTop: -2 },
-    bars: { flexDirection: 'row', gap: 6, height: 72, alignItems: 'flex-end' },
+    bars: { flexDirection: 'row', gap: 6, height: 54, alignItems: 'flex-end' },
     barCol: { flex: 1, alignItems: 'center', gap: 5, height: '100%' },
     barTrack: { flex: 1, width: '100%', justifyContent: 'flex-end', borderRadius: 6, overflow: 'hidden', backgroundColor: C.border },
     barFill: { width: '100%', borderRadius: 6, overflow: 'hidden', minHeight: 4 },
@@ -368,11 +375,11 @@ function StatStrip({
 
 function makeStripStyles(C: AppColors) {
   return StyleSheet.create({
-    row: { flexDirection: 'row', backgroundColor: C.bgCard, borderRadius: 16, borderWidth: 1, borderColor: C.border, paddingVertical: 16 },
-    cell: { flex: 1, alignItems: 'center', gap: 4 },
+    row: { flexDirection: 'row', backgroundColor: C.bgCard, borderRadius: 16, borderWidth: 1, borderColor: C.border, paddingVertical: 12 },
+    cell: { flex: 1, alignItems: 'center', gap: 3 },
     divider: { width: 1, backgroundColor: C.border },
-    value: { fontFamily: 'Syne-Bold', fontSize: 18, color: C.textPrimary },
-    label: { fontFamily: 'DMSans-Regular', fontSize: 11, color: C.textMuted },
+    value: { fontFamily: 'Syne-Bold', fontSize: 15, color: C.textPrimary },
+    label: { fontFamily: 'DMSans-Regular', fontSize: 10, color: C.textMuted },
   });
 }
 
@@ -382,98 +389,99 @@ function QuickLinks() {
   const { colors: C } = useTheme();
   const ql = useMemo(() => makeQlStyles(C), [C]);
   return (
-    <Animated.View entering={FadeInDown.delay(280).duration(400)} style={ql.row}>
-      <TouchableOpacity
-        style={ql.card}
-        activeOpacity={0.8}
-        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/gift-analytics'); }}
-      >
-        <LinearGradient
-          colors={['rgba(255,184,0,0.15)', 'rgba(255,184,0,0.05)']}
-          style={ql.grad}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+    <>
+      <Animated.View entering={FadeInDown.delay(280).duration(400)} style={ql.row}>
+        <TouchableOpacity
+          style={ql.card}
+          activeOpacity={0.8}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/gift-analytics'); }}
         >
-          <View style={ql.iconWrap}>
-            <Ionicons name="gift-outline" size={20} color={C.gold} />
-          </View>
-          <Text style={ql.cardTitle}>Gift Analytics</Text>
-          <Text style={ql.cardSub}>Platform breakdown</Text>
-          <View style={ql.arrow}>
-            <Ionicons name="arrow-forward" size={14} color={C.gold} />
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
+          <LinearGradient
+            colors={['rgba(255,184,0,0.15)', 'rgba(255,184,0,0.05)']}
+            style={ql.grad}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <View style={ql.iconWrap}>
+              <Ionicons name="gift-outline" size={20} color={C.gold} />
+            </View>
+            <Text style={ql.cardTitle}>Gift Analytics</Text>
+            <Text style={ql.cardSub}>Platform breakdown</Text>
+            <View style={ql.arrow}>
+              <Ionicons name="arrow-forward" size={14} color={C.gold} />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
 
-      <TouchableOpacity
-        style={ql.card}
-        activeOpacity={0.8}
-        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/streams'); }}
-      >
-        <LinearGradient
-          colors={['rgba(255,45,135,0.15)', 'rgba(255,45,135,0.05)']}
-          style={ql.grad}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+        <TouchableOpacity
+          style={ql.card}
+          activeOpacity={0.8}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/streams'); }}
         >
-          <View style={[ql.iconWrap, { backgroundColor: C.pinkDim }]}>
-            <Ionicons name="recording-outline" size={20} color={C.pink} />
-          </View>
-          <Text style={ql.cardTitle}>Stream History</Text>
-          <Text style={ql.cardSub}>All broadcasts</Text>
-          <View style={[ql.arrow, { backgroundColor: C.pinkDim }]}>
-            <Ionicons name="arrow-forward" size={14} color={C.pink} />
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
-    </Animated.View>
+          <LinearGradient
+            colors={['rgba(255,45,135,0.15)', 'rgba(255,45,135,0.05)']}
+            style={ql.grad}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <View style={[ql.iconWrap, { backgroundColor: C.pinkDim }]}>
+              <Ionicons name="recording-outline" size={20} color={C.pink} />
+            </View>
+            <Text style={ql.cardTitle}>Stream History</Text>
+            <Text style={ql.cardSub}>All broadcasts</Text>
+            <View style={[ql.arrow, { backgroundColor: C.pinkDim }]}>
+              <Ionicons name="arrow-forward" size={14} color={C.pink} />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
 
-    {/* New feature quick links */}
-    <Animated.View entering={FadeInDown.delay(300).duration(400)} style={ql.row}>
-      <TouchableOpacity
-        style={ql.card}
-        activeOpacity={0.8}
-        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/viewer-rewards'); }}
-      >
-        <LinearGradient
-          colors={['rgba(168,85,247,0.15)', 'rgba(168,85,247,0.05)']}
-          style={ql.grad}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+      <Animated.View entering={FadeInDown.delay(300).duration(400)} style={ql.row}>
+        <TouchableOpacity
+          style={ql.card}
+          activeOpacity={0.8}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/viewer-rewards'); }}
         >
-          <View style={[ql.iconWrap, { backgroundColor: 'rgba(168,85,247,0.18)' }]}>
-            <Ionicons name="people-outline" size={20} color="#A855F7" />
-          </View>
-          <Text style={ql.cardTitle}>Viewer Rewards</Text>
-          <Text style={ql.cardSub}>Control who earns</Text>
-          <View style={[ql.arrow, { backgroundColor: 'rgba(168,85,247,0.18)' }]}>
-            <Ionicons name="arrow-forward" size={14} color="#A855F7" />
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
+          <LinearGradient
+            colors={['rgba(168,85,247,0.15)', 'rgba(168,85,247,0.05)']}
+            style={ql.grad}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <View style={[ql.iconWrap, { backgroundColor: 'rgba(168,85,247,0.18)' }]}>
+              <Ionicons name="people-outline" size={20} color="#A855F7" />
+            </View>
+            <Text style={ql.cardTitle}>Viewer Rewards</Text>
+            <Text style={ql.cardSub}>Control who earns</Text>
+            <View style={[ql.arrow, { backgroundColor: 'rgba(168,85,247,0.18)' }]}>
+              <Ionicons name="arrow-forward" size={14} color="#A855F7" />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
 
-      <TouchableOpacity
-        style={ql.card}
-        activeOpacity={0.8}
-        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/growth-insights'); }}
-      >
-        <LinearGradient
-          colors={['rgba(0,217,126,0.12)', 'rgba(0,217,126,0.04)']}
-          style={ql.grad}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+        <TouchableOpacity
+          style={ql.card}
+          activeOpacity={0.8}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/growth-insights'); }}
         >
-          <View style={[ql.iconWrap, { backgroundColor: 'rgba(0,217,126,0.15)' }]}>
-            <Ionicons name="sparkles-outline" size={20} color="#00D97E" />
-          </View>
-          <Text style={ql.cardTitle}>AI Insights</Text>
-          <Text style={ql.cardSub}>Grow your audience</Text>
-          <View style={[ql.arrow, { backgroundColor: 'rgba(0,217,126,0.15)' }]}>
-            <Ionicons name="arrow-forward" size={14} color="#00D97E" />
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
-    </Animated.View>
+          <LinearGradient
+            colors={['rgba(0,217,126,0.12)', 'rgba(0,217,126,0.04)']}
+            style={ql.grad}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <View style={[ql.iconWrap, { backgroundColor: 'rgba(0,217,126,0.15)' }]}>
+              <Ionicons name="sparkles-outline" size={20} color="#00D97E" />
+            </View>
+            <Text style={ql.cardTitle}>AI Insights</Text>
+            <Text style={ql.cardSub}>Grow your audience</Text>
+            <View style={[ql.arrow, { backgroundColor: 'rgba(0,217,126,0.15)' }]}>
+              <Ionicons name="arrow-forward" size={14} color="#00D97E" />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
+    </>
   );
 }
 
@@ -481,11 +489,11 @@ function makeQlStyles(C: AppColors) {
   return StyleSheet.create({
     row: { flexDirection: 'row', gap: 10 },
     card: { flex: 1, borderRadius: 16, borderWidth: 1, borderColor: C.border, overflow: 'hidden' },
-    grad: { padding: 16, gap: 6, minHeight: 130 },
-    iconWrap: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.goldDim, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-    cardTitle: { fontFamily: 'Syne-Bold', fontSize: 14, color: C.textPrimary },
-    cardSub: { fontFamily: 'DMSans-Regular', fontSize: 12, color: C.textMuted },
-    arrow: { width: 28, height: 28, borderRadius: 9, backgroundColor: C.goldDim, alignItems: 'center', justifyContent: 'center', marginTop: 'auto' as any, alignSelf: 'flex-end' },
+    grad: { padding: 12, gap: 5, minHeight: 108 },
+    iconWrap: { width: 32, height: 32, borderRadius: 10, backgroundColor: C.goldDim, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+    cardTitle: { fontFamily: 'Syne-Bold', fontSize: 13, color: C.textPrimary },
+    cardSub: { fontFamily: 'DMSans-Regular', fontSize: 11, color: C.textMuted },
+    arrow: { width: 24, height: 24, borderRadius: 8, backgroundColor: C.goldDim, alignItems: 'center', justifyContent: 'center', marginTop: 'auto' as any, alignSelf: 'flex-end' },
   });
 }
 
@@ -722,7 +730,7 @@ function makeWalletStyles(C: AppColors) {
     container: { flex: 1, backgroundColor: C.bg },
     content: { paddingHorizontal: 20, gap: 14 },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
-    title: { fontFamily: 'Syne-ExtraBold', fontSize: 28, color: C.textPrimary },
+    title: { fontFamily: 'Syne-ExtraBold', fontSize: 22, color: C.textPrimary },
     historyBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.bgCard, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
     actionRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8 },
     txHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },

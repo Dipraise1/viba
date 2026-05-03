@@ -230,7 +230,7 @@ export default function NotificationsScreen() {
           <Ionicons name="chevron-back" size={22} color={Colors.textSecondary} />
         </TouchableOpacity>
         <View style={styles.stepPill}>
-          <Text style={styles.stepText}>4 of 5</Text>
+          <Text style={styles.stepText}>5 of 6</Text>
         </View>
       </Animated.View>
 

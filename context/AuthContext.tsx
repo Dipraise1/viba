@@ -6,14 +6,14 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Linking from 'expo-linking';
 import { supabase } from '@/lib/supabase';
 
-WebBrowser.maybeCompleteAuthSession();
-
 interface AuthState {
   session: Session | null;
   user: User | null;
   loading: boolean;
+  isDemoMode: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithApple: () => Promise<void>;
+  signInAsDemo: () => void;
   signOut: () => Promise<void>;
 }
 
@@ -22,6 +22,13 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      WebBrowser.maybeCompleteAuthSession();
+    }
+  }, []);
 
   useEffect(() => {
     // Load existing session
@@ -95,7 +102,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   };
 
+  const signInAsDemo = () => {
+    setIsDemoMode(true);
+  };
+
   const signOut = async () => {
+    setIsDemoMode(false);
     await supabase.auth.signOut();
   };
 
@@ -105,8 +117,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         user: session?.user ?? null,
         loading,
+        isDemoMode,
         signInWithGoogle,
         signInWithApple,
+        signInAsDemo,
         signOut,
       }}
     >

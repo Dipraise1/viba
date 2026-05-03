@@ -60,7 +60,7 @@ function TabButton({
 
   const iconStyle = useAnimatedStyle(() => ({
     transform: [{ scale: interpolate(glow.value, [0, 1], [1, 1.12], Extrapolation.CLAMP) }],
-    opacity: interpolate(glow.value, [0, 1], [0.45, 1], Extrapolation.CLAMP),
+    opacity: interpolate(glow.value, [0, 1], [0.65, 1], Extrapolation.CLAMP),
   }));
 
   const dotStyle = useAnimatedStyle(() => ({
@@ -139,7 +139,7 @@ function LiveFab({ isFocused, onPress }: { isFocused: boolean; onPress: () => vo
       <Pressable onPress={handlePress}>
         <Animated.View style={fabStyle}>
           <LinearGradient
-            colors={isFocused ? ['#FF2D87', '#C020E0', '#7B2FFF'] : ['#2A1535', '#1A0D28']}
+            colors={isFocused ? ['#FF2D87', '#C020E0', '#7B2FFF'] : ['#000000', '#000000']}
             style={[fabStyles.fab, isFocused && fabStyles.fabActive]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -180,7 +180,7 @@ function CustomTabBar({ state, navigation }: any) {
     }
   };
 
-  if (activeRoute === 'live') return null;
+  if (activeRoute === 'live' || activeRoute === 'create') return null;
 
   return (
     <View style={[barStyles.outerWrap, { paddingBottom: insets.bottom + 8 }]}>
@@ -201,8 +201,8 @@ function CustomTabBar({ state, navigation }: any) {
 
         {/* Center FAB */}
         <LiveFab
-          isFocused={activeRoute === 'live'}
-          onPress={() => navigate('live')}
+          isFocused={activeRoute === 'live' || activeRoute === 'create'}
+          onPress={() => navigate('create')}
         />
 
         {/* Right tabs */}
@@ -232,7 +232,8 @@ export default function TabLayout() {
     >
       <Tabs.Screen name="index" />
       <Tabs.Screen name="discover" />
-      <Tabs.Screen name="live" />
+      <Tabs.Screen name="create" options={{ href: null }} />
+      <Tabs.Screen name="live" options={{ href: null }} />
       <Tabs.Screen name="activity" />
       <Tabs.Screen name="chats" options={{ href: null }} />
       <Tabs.Screen name="gifts" options={{ href: null }} />
@@ -263,16 +264,11 @@ function makeBarStyles(C: AppColors) {
       justifyContent: 'space-between',
       width: '90%',
       height: 64,
-      backgroundColor: C.bgDeep,
+      backgroundColor: 'transparent',
       borderRadius: 32,
-      borderWidth: 1,
-      borderColor: C.border,
+      borderWidth: 1.5,
+      borderColor: 'rgba(255,255,255,0.55)',
       paddingHorizontal: 8,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: -4 },
-      shadowOpacity: 0.35,
-      shadowRadius: 16,
-      elevation: 20,
       overflow: 'visible',
     },
     tabGroup: {

@@ -7,7 +7,10 @@ import { supabase } from '@/lib/supabase';
 export const RESTREAM_RTMP_URL = 'rtmps://live.restream.io/live';
 
 const RESTREAM_CLIENT_ID = process.env.EXPO_PUBLIC_RESTREAM_CLIENT_ID ?? '';
-const REDIRECT_URI = Linking.createURL('restream/callback');
+
+function getRedirectUri() {
+  return Linking.createURL('restream/callback');
+}
 
 // ─── RTMP helpers ─────────────────────────────────────────────────────────────
 
@@ -23,13 +26,14 @@ export function buildRtmpUrl(streamKey: string): string {
  * Returns the access token on success.
  */
 export async function connectRestream(): Promise<string> {
+  const redirectUri = getRedirectUri();
   const authUrl =
     `https://api.restream.io/login` +
     `?response_type=code` +
     `&client_id=${encodeURIComponent(RESTREAM_CLIENT_ID)}` +
-    `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+    `&redirect_uri=${encodeURIComponent(redirectUri)}`;
 
-  const result = await WebBrowser.openAuthSessionAsync(authUrl, REDIRECT_URI);
+  const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
   if (result.type !== 'success') throw new Error('Restream connection cancelled');
 
   const code = new URL(result.url).searchParams.get('code');
@@ -46,7 +50,7 @@ export async function connectRestream(): Promise<string> {
         Authorization: `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ code, redirect_uri: REDIRECT_URI }),
+      body: JSON.stringify({ code, redirect_uri: redirectUri }),
     }
   );
   const json = await res.json();

@@ -1,8 +1,11 @@
+import 'react-native-get-random-values';
+import 'react-native-url-polyfill/auto';
+import { Buffer } from 'buffer';
+if (typeof global.Buffer === 'undefined') (global as any).Buffer = Buffer;
 import { useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import * as SplashScreen from 'expo-splash-screen';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -29,10 +32,9 @@ import {
 import { AppProvider } from '@/context/AppContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
-import { registerForPushNotifications } from '@/lib/notifications';
+import { WalletProvider } from '@/context/WalletContext';
+import { ensureNotificationHandlerConfigured, registerForPushNotifications } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
-
-SplashScreen.preventAutoHideAsync();
 
 // ─── Splash intro ─────────────────────────────────────────────────────────────
 
@@ -92,46 +94,75 @@ const splashStyles = StyleSheet.create({
 // ─── Auth gate — redirects based on session ───────────────────────────────────
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { session, loading } = useAuth();
+  const { session, loading, isDemoMode } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
     if (loading) return;
 
+    const isAuthed = !!session || isDemoMode;
     const inAuthGroup = segments[0] === '(tabs)';
-    const inOnboarding = segments[0] === 'onboarding';
     const inLogin = segments[0] === 'login';
 
-    if (!session && inAuthGroup) {
+    if (!isAuthed && inAuthGroup) {
       router.replace('/login');
       return;
     }
 
-    if (session && (inLogin || (segments[0] as string) === 'index')) {
-      // Check if user has set a username yet
-      const checkUsername = async () => {
+    if (isAuthed && (inLogin || (segments[0] as string) === 'index')) {
+      if (isDemoMode) {
+        router.replace('/(tabs)');
+        return;
+      }
+      const bootstrapProfile = async () => {
         const { data } = await supabase
           .from('profiles')
           .select('username')
-          .eq('id', session.user.id)
+          .eq('id', session!.user.id)
           .single();
 
-        if (!data?.username) {
-          router.replace('/onboarding/profile');
-        } else {
+        if (data?.username) {
           router.replace('/(tabs)');
+          return;
         }
+
+        // New user — auto-create profile from OAuth metadata
+        const meta = session!.user.user_metadata ?? {};
+        const fullName: string = meta.full_name ?? meta.name ?? '';
+        const avatarUrl: string | null = meta.avatar_url ?? meta.picture ?? null;
+
+        const base = fullName
+          .toLowerCase()
+          .replace(/\s+/g, '_')
+          .replace(/[^a-z0-9_]/g, '')
+          .slice(0, 20)
+          || `creator_${session!.user.id.slice(0, 5)}`;
+
+        // Ensure uniqueness by checking and appending suffix if needed
+        let username = base;
+        const { data: taken } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', username)
+          .maybeSingle();
+        if (taken) {
+          username = `${base}_${Math.floor(1000 + Math.random() * 9000)}`;
+        }
+
+        await supabase.from('profiles').upsert({
+          id: session!.user.id,
+          username,
+          display_name: fullName || 'Viba Creator',
+          avatar_url: avatarUrl,
+        });
+
+        router.replace('/(tabs)');
       };
-      checkUsername();
+      bootstrapProfile();
       return;
     }
-
-    // Allow moving through onboarding freely
-    if (session && inOnboarding && segments[1] !== 'profile') {
-      // already in onboarding — let them proceed
-    }
-  }, [session, loading, segments]);
+  }, [session, loading, isDemoMode, segments]);
 
   return <>{children}</>;
 }
@@ -141,6 +172,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 function ThemedApp() {
   const { colors, resolvedTheme } = useTheme();
   const { session } = useAuth();
+
+  useEffect(() => {
+    ensureNotificationHandlerConfigured();
+  }, []);
 
   useEffect(() => {
     if (session) registerForPushNotifications();
@@ -167,6 +202,7 @@ function ThemedApp() {
           <Stack.Screen name="notifications" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="streams" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="gift-analytics" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="viba-balance" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="activity" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="followers" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="following" options={{ animation: 'slide_from_right' }} />
@@ -192,19 +228,17 @@ export default function RootLayout() {
   });
   const [introDone, setIntroDone] = useState(false);
 
-  useEffect(() => {
-    if (fontsLoaded) SplashScreen.hideAsync().catch(() => {});
-  }, [fontsLoaded]);
-
   if (!fontsLoaded) return null;
 
   return (
     <AuthProvider>
       <AppProvider>
-        <ThemeProvider>
-          <ThemedApp />
-          {!introDone && <SplashIntro onFinish={() => setIntroDone(true)} />}
-        </ThemeProvider>
+        <WalletProvider>
+          <ThemeProvider>
+            <ThemedApp />
+            {!introDone && <SplashIntro onFinish={() => setIntroDone(true)} />}
+          </ThemeProvider>
+        </WalletProvider>
       </AppProvider>
     </AuthProvider>
   );

@@ -158,36 +158,54 @@ function SlideComments() {
 // --- Slide 3: Gifts ---
 function SlideGifts() {
   const gifts = [
-    { icon: '🌹', name: 'Rose', count: 24, platform: 'TikTok', color: Colors.pink },
-    { icon: '⭐', name: 'Star', count: 50, platform: 'Facebook', color: Colors.gold },
-    { icon: '💜', name: 'Heart', count: 12, platform: 'Twitch', color: Colors.purpleLight },
-    { icon: '🎁', name: 'Gift', count: 8, platform: 'YouTube', color: '#FF0000' },
+    { ionicon: 'rose',        name: 'Rose',  count: 24, value: '$48',  platform: 'TikTok',   colors: ['#FF2D87', '#FF6BB3'] as [string,string], pct: 0.9 },
+    { ionicon: 'star',        name: 'Star',  count: 50, value: '$62',  platform: 'Facebook', colors: ['#FFB800', '#FFD460'] as [string,string], pct: 1.0 },
+    { ionicon: 'heart',       name: 'Heart', count: 12, value: '$22',  platform: 'Twitch',   colors: ['#7B2FFF', '#A855F7'] as [string,string], pct: 0.45 },
+    { ionicon: 'gift',        name: 'Gift',  count: 8,  value: '$16',  platform: 'YouTube',  colors: ['#FF4500', '#FF7043'] as [string,string], pct: 0.32 },
   ];
 
   return (
     <View style={slideStyles.illustration}>
-      <View style={slideStyles.giftsGrid}>
+      <View style={slideStyles.giftsList}>
         {gifts.map((g, i) => (
           <Animated.View
             key={g.name}
-            entering={FadeInDown.delay(200 + i * 100).duration(500).springify()}
-            style={[slideStyles.giftCard, { borderColor: g.color + '40' }]}
+            entering={FadeInDown.delay(180 + i * 90).duration(450).springify()}
+            style={slideStyles.giftRow}
           >
             <LinearGradient
-              colors={[g.color + '18', 'transparent']}
-              style={[StyleSheet.absoluteFill, { borderRadius: 16 }]}
-            />
-            <Text style={slideStyles.giftEmoji}>{g.icon}</Text>
-            <Text style={[slideStyles.giftCount, { color: g.color }]}>×{g.count}</Text>
-            <Text style={slideStyles.giftName}>{g.name}</Text>
-            <Text style={slideStyles.giftPlatform}>{g.platform}</Text>
+              colors={g.colors}
+              style={slideStyles.giftIconBadge}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Ionicons name={g.ionicon as any} size={16} color="#FFFFFF" />
+            </LinearGradient>
+
+            <View style={slideStyles.giftMeta}>
+              <View style={slideStyles.giftTopRow}>
+                <Text style={slideStyles.giftName}>{g.name}</Text>
+                <Text style={[slideStyles.giftValue, { color: g.colors[0] }]}>{g.value}</Text>
+              </View>
+              <View style={slideStyles.giftBottomRow}>
+                <Text style={slideStyles.giftPlatform}>{g.platform} · ×{g.count}</Text>
+              </View>
+              <View style={slideStyles.giftBarTrack}>
+                <LinearGradient
+                  colors={g.colors}
+                  style={[slideStyles.giftBarFill, { width: `${g.pct * 100}%` }]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                />
+              </View>
+            </View>
           </Animated.View>
         ))}
       </View>
 
       {/* Total bar */}
       <Animated.View
-        entering={FadeInDown.delay(700).duration(500)}
+        entering={FadeInDown.delay(640).duration(500)}
         style={slideStyles.totalBar}
       >
         <LinearGradient
@@ -196,7 +214,10 @@ function SlideGifts() {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
         />
-        <Text style={slideStyles.totalLabel}>Today's total</Text>
+        <View style={slideStyles.totalLeft}>
+          <Ionicons name="trending-up" size={14} color={Colors.pink} />
+          <Text style={slideStyles.totalLabel}>Today's total</Text>
+        </View>
         <Text style={slideStyles.totalValue}>$147.50</Text>
       </Animated.View>
     </View>
@@ -426,53 +447,82 @@ const slideStyles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 8,
   },
-  giftsGrid: {
+  giftsList: {
+    width: '100%',
+    gap: 8,
+  },
+  giftRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  giftCard: {
-    width: (width - 80) / 2,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
     alignItems: 'center',
+    gap: 12,
     backgroundColor: Colors.bgCard,
-    overflow: 'hidden',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
   },
-  giftEmoji: {
-    fontSize: 28,
-    marginBottom: 4,
+  giftIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  giftCount: {
-    fontFamily: 'Syne-Bold',
-    fontSize: 20,
+  giftMeta: {
+    flex: 1,
+    gap: 5,
+  },
+  giftTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  giftBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   giftName: {
-    fontFamily: 'DMSans-Medium',
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginTop: 2,
+    fontFamily: 'DMSans-Bold',
+    fontSize: 14,
+    color: Colors.textPrimary,
+  },
+  giftValue: {
+    fontFamily: 'Syne-Bold',
+    fontSize: 14,
   },
   giftPlatform: {
     fontFamily: 'DMSans-Regular',
     fontSize: 11,
     color: Colors.textMuted,
-    marginTop: 2,
+  },
+  giftBarTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
+    overflow: 'hidden',
+  },
+  giftBarFill: {
+    height: 3,
+    borderRadius: 2,
   },
   totalBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     width: '100%',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: Colors.borderPink,
-    padding: 16,
-    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginTop: 4,
     overflow: 'hidden',
+  },
+  totalLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   totalLabel: {
     fontFamily: 'DMSans-Medium',
@@ -481,7 +531,7 @@ const slideStyles = StyleSheet.create({
   },
   totalValue: {
     fontFamily: 'Syne-Bold',
-    fontSize: 22,
+    fontSize: 20,
     color: Colors.pink,
   },
 });

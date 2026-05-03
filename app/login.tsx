@@ -8,6 +8,8 @@ import {
   Alert,
   Platform,
   Image,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,10 +23,13 @@ import Animated, {
   withSequence,
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
+import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import * as AppleAuthentication from 'expo-apple-authentication';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/context/AuthContext';
+
+const IS_PAD = Platform.OS === 'ios' && Platform.isPad;
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ─── Google "G" logo ──────────────────────────────────────────────────────────
 
@@ -159,6 +164,76 @@ const dividerStyles = StyleSheet.create({
   text: { fontFamily: 'DMSans-Regular', fontSize: 13, color: Colors.textMuted },
 });
 
+// ─── Product preview ─────────────────────────────────────────────────────────
+
+function StreamPreview() {
+  return (
+    <Animated.View entering={FadeInDown.delay(220).duration(600)} style={previewStyles.shell}>
+      <LinearGradient
+        colors={['rgba(255,255,255,0.18)', 'rgba(255,45,135,0.26)', 'rgba(0,212,170,0.18)']}
+        style={previewStyles.frameBorder}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={previewStyles.frame}>
+          <LinearGradient
+            colors={['#1C1B28', '#22293A', '#071016']}
+            style={StyleSheet.absoluteFill}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+          <View style={previewStyles.lightBand} />
+          <View style={previewStyles.topRow}>
+            <View style={previewStyles.liveBadge}>
+              <View style={previewStyles.liveDot} />
+              <Text style={previewStyles.liveText}>LIVE</Text>
+            </View>
+            <View style={previewStyles.viewerPill}>
+              <Ionicons name="eye" size={12} color="rgba(255,255,255,0.88)" />
+              <Text style={previewStyles.viewerText}>8.4K</Text>
+            </View>
+          </View>
+
+          <View style={previewStyles.creatorBlock}>
+            <View style={previewStyles.creatorAvatar}>
+              <Image source={require('../assets/logo.png')} style={previewStyles.creatorLogo} resizeMode="contain" />
+            </View>
+            <View style={previewStyles.creatorCopy}>
+              <Text style={previewStyles.creatorName}>Viba Live</Text>
+              <View style={previewStyles.waveRow}>
+                <View style={[previewStyles.waveBar, { height: 10, backgroundColor: '#FF2D87' }]} />
+                <View style={[previewStyles.waveBar, { height: 18, backgroundColor: '#00D4AA' }]} />
+                <View style={[previewStyles.waveBar, { height: 13, backgroundColor: '#FFB800' }]} />
+                <View style={[previewStyles.waveBar, { height: 22, backgroundColor: '#7B2FFF' }]} />
+                <View style={[previewStyles.waveBar, { height: 15, backgroundColor: '#FF6B35' }]} />
+              </View>
+            </View>
+          </View>
+
+          <View style={previewStyles.platformDock}>
+            {[
+              { icon: 'tiktok', color: '#010101' },
+              { icon: 'instagram', color: '#E1306C' },
+              { icon: 'youtube', color: '#FF0000' },
+              { icon: 'twitch', color: '#9146FF' },
+            ].map((item) => (
+              <View key={item.icon} style={[previewStyles.platformIcon, { backgroundColor: item.color }]}>
+                <FontAwesome5 name={item.icon as any} size={14} color="#FFFFFF" solid />
+              </View>
+            ))}
+          </View>
+
+          <View style={previewStyles.chatStack}>
+            <View style={previewStyles.chatLineWide} />
+            <View style={previewStyles.chatLine} />
+            <View style={previewStyles.chatLineShort} />
+          </View>
+        </View>
+      </LinearGradient>
+    </Animated.View>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 type LoadingState = null | 'google' | 'apple' | 'email';
@@ -166,7 +241,7 @@ type LoadingState = null | 'google' | 'apple' | 'email';
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState<LoadingState>(null);
-  const { signInWithGoogle, signInWithApple } = useAuth();
+  const { signInWithGoogle, signInWithApple, signInAsDemo } = useAuth();
 
   const handleGoogle = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -202,79 +277,93 @@ export default function LoginScreen() {
     router.push('/auth/email');
   };
 
+  const handleDemo = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    signInAsDemo();
+  };
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={styles.container}>
       <LinearGradient
-        colors={['rgba(123,47,255,0.07)', Colors.bg, 'rgba(255,45,135,0.07)']}
+        colors={['rgba(0,212,170,0.08)', Colors.bg, 'rgba(255,45,135,0.08)']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         pointerEvents="none"
       />
+      <View style={styles.topBand} pointerEvents="none" />
+      <View style={styles.bottomBand} pointerEvents="none" />
 
-      {/* Logo */}
-      <View style={styles.logoArea}>
-        <Image source={require('../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
-      </View>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: insets.top + (IS_PAD ? 64 : 30), paddingBottom: insets.bottom + 36 },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.inner}>
+          <StreamPreview />
 
-      {/* Auth buttons */}
-      <Animated.View entering={FadeInUp.delay(500).duration(600)} style={styles.authArea}>
-        <AuthButton
-          variant="outline"
-          onPress={handleGoogle}
-          loading={loading === 'google'}
-        >
-          <GoogleLogo size={20} />
-          <Text style={styles.authBtnText}>Continue with Google</Text>
-        </AuthButton>
+          {/* Auth buttons */}
+          <Animated.View entering={FadeInUp.delay(500).duration(600)} style={styles.authArea}>
+            <AuthButton
+              variant="outline"
+              onPress={handleGoogle}
+              loading={loading === 'google'}
+            >
+              <GoogleLogo size={20} />
+              <Text style={styles.authBtnText}>Continue with Google</Text>
+            </AuthButton>
 
-        {Platform.OS === 'ios' && (
-          <AuthButton
-            variant="apple"
-            onPress={handleApple}
-            loading={loading === 'apple'}
-          >
-            <Text style={styles.appleLogo}></Text>
-            <Text style={styles.appleAuthText}>Continue with Apple</Text>
-          </AuthButton>
-        )}
+            {Platform.OS === 'ios' && (
+              <AuthButton
+                variant="apple"
+                onPress={handleApple}
+                loading={loading === 'apple'}
+              >
+                <Text style={styles.appleLogo}></Text>
+                <Text style={styles.appleAuthText}>Continue with Apple</Text>
+              </AuthButton>
+            )}
 
-        <OrDivider />
+            <OrDivider />
 
-        <AuthButton
-          variant="gradient"
-          onPress={handleEmail}
-          loading={loading === 'email'}
-        >
-          <Text style={styles.gradientBtnText}>Sign in with Email</Text>
-        </AuthButton>
+            <AuthButton
+              variant="gradient"
+              onPress={handleEmail}
+              loading={loading === 'email'}
+            >
+              <Text style={styles.gradientBtnText}>Sign in with Email</Text>
+            </AuthButton>
 
-        <Animated.Text entering={FadeInDown.delay(700).duration(500)} style={styles.tagline}>
-          Welcome back
-        </Animated.Text>
-      </Animated.View>
+            <TouchableOpacity onPress={handleDemo} activeOpacity={0.7} style={styles.demoBtn}>
+              <Text style={styles.demoText}>Try Demo — no account needed</Text>
+            </TouchableOpacity>
+          </Animated.View>
 
-      {/* Footer */}
-      <Animated.View entering={FadeInUp.delay(700).duration(500)} style={styles.footer}>
-        <TouchableOpacity
-          onPress={() => router.replace('/onboarding/welcome')}
-          activeOpacity={0.7}
-          style={styles.newUserBtn}
-        >
-          <Text style={styles.newUserText}>
-            New to Viba?{' '}
-            <Text style={styles.newUserCta}>Create account</Text>
-          </Text>
-        </TouchableOpacity>
+          {/* Footer */}
+          <Animated.View entering={FadeInUp.delay(700).duration(500)} style={styles.footer}>
+            <TouchableOpacity
+              onPress={() => router.replace('/onboarding/welcome')}
+              activeOpacity={0.7}
+              style={styles.newUserBtn}
+            >
+              <Text style={styles.newUserText}>
+                New to Viba?{' '}
+                <Text style={styles.newUserCta}>Create account</Text>
+              </Text>
+            </TouchableOpacity>
 
-        <Text style={styles.legalText}>
-          By continuing you agree to our{' '}
-          <Text style={styles.legalLink}>Terms of Service</Text>
-          {' '}and{' '}
-          <Text style={styles.legalLink}>Privacy Policy</Text>
-        </Text>
-
-      </Animated.View>
+            <Text style={styles.legalText}>
+              By continuing you agree to our{' '}
+              <Text style={styles.legalLink}>Terms of Service</Text>
+              {' '}and{' '}
+              <Text style={styles.legalLink}>Privacy Policy</Text>
+            </Text>
+          </Animated.View>
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -283,24 +372,36 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.bg,
-    paddingHorizontal: 28,
-    justifyContent: 'space-between',
   },
-  logoArea: {
+  topBand: {
+    position: 'absolute',
+    top: -54,
+    right: -80,
+    width: SCREEN_WIDTH * 0.82,
+    height: 180,
+    borderRadius: 34,
+    backgroundColor: 'rgba(0,212,170,0.10)',
+    transform: [{ rotate: '-16deg' }],
+  },
+  bottomBand: {
+    position: 'absolute',
+    bottom: -70,
+    left: -86,
+    width: SCREEN_WIDTH * 0.9,
+    height: 190,
+    borderRadius: 34,
+    backgroundColor: 'rgba(255,45,135,0.10)',
+    transform: [{ rotate: '-14deg' }],
+  },
+  scroll: {
+    flexGrow: 1,
     alignItems: 'center',
-    paddingTop: 60,
-    gap: 10,
+    justifyContent: IS_PAD ? 'center' : 'flex-start',
   },
-  logoImage: {
-    width: 180,
-    height: 120,
-  },
-  tagline: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 16,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 8,
+  inner: {
+    width: IS_PAD ? Math.min(520, SCREEN_WIDTH * 0.6) : '100%',
+    paddingHorizontal: IS_PAD ? 0 : 28,
+    gap: IS_PAD ? 34 : 24,
   },
   authArea: {
     width: '100%',
@@ -329,7 +430,6 @@ const styles = StyleSheet.create({
   footer: {
     alignItems: 'center',
     gap: 16,
-    paddingBottom: 12,
   },
   newUserBtn: {
     paddingVertical: 6,
@@ -353,5 +453,173 @@ const styles = StyleSheet.create({
   legalLink: {
     color: Colors.textSecondary,
     textDecorationLine: 'underline',
+  },
+  demoBtn: {
+    width: '100%',
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  demoText: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 15,
+    color: Colors.textSecondary,
+  },
+});
+
+const previewStyles = StyleSheet.create({
+  shell: {
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.34,
+    shadowRadius: 26,
+    elevation: 18,
+  },
+  frameBorder: {
+    borderRadius: 30,
+    padding: 1,
+  },
+  frame: {
+    height: IS_PAD ? 260 : 218,
+    borderRadius: 29,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    padding: 16,
+    justifyContent: 'space-between',
+  },
+  lightBand: {
+    position: 'absolute',
+    top: 22,
+    left: -40,
+    width: '90%',
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    transform: [{ rotate: '-18deg' }],
+  },
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,45,135,0.88)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FFFFFF',
+  },
+  liveText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 11,
+    color: '#FFFFFF',
+    letterSpacing: 0.6,
+  },
+  viewerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(0,0,0,0.34)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  viewerText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 12,
+    color: '#FFFFFF',
+  },
+  creatorBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  creatorAvatar: {
+    width: 66,
+    height: 66,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.24)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    overflow: 'hidden',
+  },
+  creatorLogo: {
+    width: 56,
+    height: 40,
+  },
+  creatorCopy: {
+    flex: 1,
+    gap: 10,
+  },
+  creatorName: {
+    fontFamily: 'Syne-Bold',
+    fontSize: 18,
+    color: '#FFFFFF',
+  },
+  waveRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 5,
+    height: 26,
+  },
+  waveBar: {
+    width: 7,
+    borderRadius: 4,
+  },
+  platformDock: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  platformIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  chatStack: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
+    width: 120,
+    gap: 7,
+    alignItems: 'flex-end',
+  },
+  chatLineWide: {
+    width: 120,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255,255,255,0.34)',
+  },
+  chatLine: {
+    width: 92,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: 'rgba(0,212,170,0.36)',
+  },
+  chatLineShort: {
+    width: 68,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255,184,0,0.36)',
   },
 });

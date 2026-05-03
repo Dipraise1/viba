@@ -82,6 +82,14 @@ const POST_CAPTIONS = [
   'This reaction had me dead 💀 watch till the end',
   'First time trying this challenge and I actually did it',
   'y\'all kept asking for a tutorial so here it is 🎯',
+  'Dropped a new beat pack — check the link in bio 🎵',
+  'My chat is so chaotic I love you guys 😂',
+  'Road to 100K — we\'re almost there!!',
+  'Late night session hits different 🌙✨',
+  'Throwback to that legendary gifting war 👑',
+  'Teaching myself this skill in 30 days — day 12 update',
+  'Surprised my whole chat with this one 😤🔥',
+  'nobody tells you how hard streaming actually is',
 ];
 
 const POST_SONGS = [
@@ -93,7 +101,47 @@ const POST_SONGS = [
   'About Damn Time - Lizzo',
   'Unholy - Sam Smith',
   'Break My Soul - Beyoncé',
+  'Creepin\' - Metro Boomin',
+  'Kill Bill - SZA',
+  'Lift Me Up - Rihanna',
+  'Escapism - RAYE',
+  'Calm Down - Rema',
+  'Cuff It - Beyoncé',
+  'Bad Habit - Steve Lacy',
 ];
+
+const DEMO_CREATORS: Creator[] = [
+  { id: 'demo-01', handle: '@zaybeats', display_name: 'Zay Beats', total_viewers: 4200, platforms: ['youtube', 'twitch'], is_live: true, last_streamed_at: null, stream_count: 89 },
+  { id: 'demo-02', handle: '@lunagaming', display_name: 'Luna Gaming', total_viewers: 8700, platforms: ['twitch', 'tiktok'], is_live: true, last_streamed_at: null, stream_count: 134 },
+  { id: 'demo-03', handle: '@nova.vibes', display_name: 'Nova Vibes', total_viewers: 2100, platforms: ['instagram', 'tiktok'], is_live: false, last_streamed_at: null, stream_count: 47 },
+  { id: 'demo-04', handle: '@djkassandra', display_name: 'DJ Kassandra', total_viewers: 6500, platforms: ['youtube', 'twitch', 'tiktok'], is_live: true, last_streamed_at: null, stream_count: 201 },
+  { id: 'demo-05', handle: '@rexfps', display_name: 'Rex FPS', total_viewers: 3300, platforms: ['twitch', 'youtube'], is_live: false, last_streamed_at: null, stream_count: 72 },
+  { id: 'demo-06', handle: '@amara.art', display_name: 'Amara Art', total_viewers: 1800, platforms: ['instagram', 'tiktok'], is_live: false, last_streamed_at: null, stream_count: 38 },
+  { id: 'demo-07', handle: '@thrillseeker', display_name: 'ThrillSeeker', total_viewers: 12400, platforms: ['youtube', 'twitch', 'tiktok', 'instagram'], is_live: true, last_streamed_at: null, stream_count: 310 },
+  { id: 'demo-08', handle: '@mellowtunes', display_name: 'Mellow Tunes', total_viewers: 900, platforms: ['tiktok', 'instagram'], is_live: false, last_streamed_at: null, stream_count: 23 },
+  { id: 'demo-09', handle: '@cyberjace', display_name: 'Cyber Jace', total_viewers: 5100, platforms: ['twitch', 'youtube'], is_live: true, last_streamed_at: null, stream_count: 156 },
+  { id: 'demo-10', handle: '@soleilfit', display_name: 'Soleil Fit', total_viewers: 3700, platforms: ['instagram', 'tiktok', 'youtube'], is_live: false, last_streamed_at: null, stream_count: 66 },
+  { id: 'demo-11', handle: '@krakencast', display_name: 'Kraken Cast', total_viewers: 7800, platforms: ['twitch', 'youtube', 'tiktok'], is_live: true, last_streamed_at: null, stream_count: 228 },
+  { id: 'demo-12', handle: '@pixelrose', display_name: 'Pixel Rose', total_viewers: 2600, platforms: ['instagram', 'tiktok'], is_live: false, last_streamed_at: null, stream_count: 54 },
+  { id: 'demo-13', handle: '@omegastreams', display_name: 'Omega Streams', total_viewers: 9900, platforms: ['twitch', 'youtube'], is_live: true, last_streamed_at: null, stream_count: 187 },
+  { id: 'demo-14', handle: '@velvetvoice', display_name: 'Velvet Voice', total_viewers: 1400, platforms: ['tiktok', 'instagram'], is_live: false, last_streamed_at: null, stream_count: 31 },
+  { id: 'demo-15', handle: '@axisplay', display_name: 'Axis Play', total_viewers: 4800, platforms: ['twitch', 'youtube', 'tiktok'], is_live: true, last_streamed_at: null, stream_count: 112 },
+  { id: 'demo-16', handle: '@mirakle', display_name: 'Mirakle', total_viewers: 6200, platforms: ['instagram', 'tiktok', 'youtube'], is_live: false, last_streamed_at: null, stream_count: 93 },
+  { id: 'demo-17', handle: '@frostbyte', display_name: 'FrostByte', total_viewers: 3100, platforms: ['twitch', 'youtube'], is_live: true, last_streamed_at: null, stream_count: 145 },
+  { id: 'demo-18', handle: '@sunnyd.tv', display_name: 'Sunny D', total_viewers: 2400, platforms: ['tiktok', 'instagram'], is_live: false, last_streamed_at: null, stream_count: 41 },
+];
+
+const DEMO_VIDEOS: VideoItem[] = DEMO_CREATORS.map((c, i) => ({
+  id: `demo-vid-${c.id}`,
+  creator: c,
+  caption: POST_CAPTIONS[(i + 3) % POST_CAPTIONS.length],
+  song: POST_SONGS[(i * 3 + 1) % POST_SONGS.length],
+  views: 800 + (i * 4217) % 52000,
+  likes: 120 + (i * 1031) % 11000,
+  comments: 8 + (i * 317) % 620,
+  imgSeed: `demo-creator-${c.id}-${i}`,
+  accentColor: ACCENT_COLORS[i % ACCENT_COLORS.length],
+}));
 
 function initials(name: string) {
   return name.split(' ').map((w) => w[0] ?? '').join('').toUpperCase().slice(0, 2) || '??';
@@ -470,16 +518,6 @@ function VideoCard({
           </View>
         )}
 
-        {/* Viba featured mark */}
-        {item.isViba && (
-          <View style={[vidS.liveBadge, { backgroundColor: 'transparent', gap: 8 }]}>
-            <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={vidS.vibaIcon} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-              <Ionicons name="radio" size={12} color="#FFFFFF" />
-            </LinearGradient>
-            <Text style={vidS.vibaLabel}>viba</Text>
-            <View style={vidS.featuredTag}><Text style={vidS.featuredTagText}>FEATURED</Text></View>
-          </View>
-        )}
 
         {/* Pause indicator */}
         {!playing && (
@@ -495,10 +533,6 @@ function VideoCard({
           start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
         />
 
-        {/* Progress bar */}
-        <View style={[vidS.progressTrack, { bottom: insets.bottom + 56 }]}>
-          <View style={[vidS.progressFill, { width: `${progress * 100}%`, backgroundColor: item.accentColor }]} />
-        </View>
       </TouchableOpacity>
 
       {/* ── Right actions ── */}
@@ -602,13 +636,7 @@ function VideoCard({
 const vidS = StyleSheet.create({
   liveBadge: { position: 'absolute', top: 64, left: 16, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FF2D87', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
   liveBadgeText: { fontFamily: 'DMSans-Bold', fontSize: 11, color: '#FFFFFF', letterSpacing: 0.4 },
-  vibaIcon: { width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  vibaLabel: { fontFamily: 'Syne-ExtraBold', fontSize: 15, color: '#FFFFFF', letterSpacing: 1 },
-  featuredTag: { backgroundColor: 'rgba(255,45,135,0.9)', borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 },
-  featuredTagText: { fontFamily: 'DMSans-Bold', fontSize: 9, color: '#FFFFFF', letterSpacing: 0.8 },
   pauseIcon: { position: 'absolute', top: '50%', left: '50%', marginTop: -28, marginLeft: -28 },
-  progressTrack: { position: 'absolute', left: 0, right: 0, height: 2.5, backgroundColor: 'rgba(255,255,255,0.2)' },
-  progressFill: { height: 2.5, borderRadius: 1 },
   actions: { position: 'absolute', right: 12, alignItems: 'center', gap: 20 },
   avatarWrap: { position: 'relative', marginBottom: 6 },
   avatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFFFFF' },
@@ -708,13 +736,22 @@ export default function HomeScreen() {
         accentColor: ACCENT_COLORS[(seed + i) % ACCENT_COLORS.length],
       };
     });
-    return [vibaItem, ...fromCreators];
+    // Interleave DB creators with demo accounts so the feed is always full
+    const combined: VideoItem[] = [];
+    const maxLen = Math.max(fromCreators.length, DEMO_VIDEOS.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (i < fromCreators.length) combined.push(fromCreators[i]);
+      if (i < DEMO_VIDEOS.length) combined.push(DEMO_VIDEOS[i]);
+    }
+    return [vibaItem, ...combined];
   }, [creators]);
 
-  // Use ranked feed when available, fall back to mock
-  const videoItems = rankedPosts.length ? [vibaItem, ...rankedPosts] : mockItems;
+  // Use ranked feed when available, fall back to mock (always append demo videos for a full TL)
+  const videoItems = rankedPosts.length
+    ? [vibaItem, ...rankedPosts, ...DEMO_VIDEOS]
+    : mockItems;
 
-  const friendsItems = videoItems.slice(0, 6);
+  const friendsItems = videoItems.slice(0, 8);
   const items = feed === 'forYou' ? videoItems : friendsItems;
 
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {

@@ -322,7 +322,6 @@ export default function ProfileScreen() {
         {/* Profile card */}
         <Animated.View entering={FadeInDown.delay(80).duration(500)}>
           <View style={styles.profileCard}>
-            <LinearGradient colors={['rgba(255,45,135,0.14)', 'rgba(123,47,255,0.14)']} style={[StyleSheet.absoluteFill, { borderRadius: 20 }]} />
             <View style={styles.profileTop}>
               <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.85} style={styles.avatarWrap}>
                 {avatarUri
@@ -342,7 +341,7 @@ export default function ProfileScreen() {
                 </View>
               </View>
               <TouchableOpacity style={styles.editBtn} onPress={() => router.push('/edit-profile')} activeOpacity={0.7}>
-                <Ionicons name="pencil-outline" size={15} color={C.textSecondary} />
+                <Ionicons name="pencil-outline" size={15} color="rgba(255,255,255,0.6)" />
               </TouchableOpacity>
             </View>
 
@@ -373,7 +372,7 @@ export default function ProfileScreen() {
             style={styles.tokenCard}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
           >
-            <View style={styles.tokenLeft}>
+            <TouchableOpacity style={styles.tokenLeft} activeOpacity={0.85} onPress={() => router.push('/viba-balance')}>
               <View style={styles.tokenIconWrap}>
                 <Ionicons name="logo-bitcoin" size={20} color="#FFFFFF" />
               </View>
@@ -381,12 +380,12 @@ export default function ProfileScreen() {
                 <Text style={styles.tokenLabel}>Viba Balance</Text>
                 <Text style={styles.tokenAmount}>{vbtBalance.toLocaleString()} VBT</Text>
               </View>
-            </View>
+            </TouchableOpacity>
             <View style={styles.tokenRight}>
               <TouchableOpacity style={styles.tokenBtn} activeOpacity={0.85}>
                 <Text style={styles.tokenBtnText}>Withdraw</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.tokenEarnBtn} activeOpacity={0.85} onPress={() => router.push('/gift-analytics')}>
+              <TouchableOpacity style={styles.tokenEarnBtn} activeOpacity={0.85} onPress={() => router.push('/viba-balance')}>
                 <Ionicons name="trending-up" size={14} color="rgba(255,255,255,0.85)" />
                 <Text style={styles.tokenEarnText}>Earn more</Text>
               </TouchableOpacity>
@@ -550,26 +549,26 @@ function makeStyles(C: AppColors) {
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
     headerTitle: { fontFamily: 'Syne-ExtraBold', fontSize: 28, color: C.textPrimary },
     settingsBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: C.bgCard, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
-    profileCard: { borderRadius: 20, borderWidth: 1, borderColor: C.border, padding: 20, overflow: 'hidden', gap: 16 },
+    profileCard: { borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: '#000000', padding: 20, overflow: 'hidden', gap: 16 },
     profileTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
     avatarWrap: { position: 'relative' },
     avatar: { width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
     avatarImg: { width: 64, height: 64, borderRadius: 20 },
     avatarOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
-    avatarEditBadge: { position: 'absolute', bottom: -4, right: -4, width: 20, height: 20, borderRadius: 10, backgroundColor: C.pink, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: C.bg },
+    avatarEditBadge: { position: 'absolute', bottom: -4, right: -4, width: 20, height: 20, borderRadius: 10, backgroundColor: C.pink, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#000000' },
     avatarInitial: { fontFamily: 'Syne-ExtraBold', fontSize: 26, color: '#FFFFFF' },
     profileMeta: { flex: 1, gap: 3 },
-    profileName: { fontFamily: 'Syne-Bold', fontSize: 20, color: C.textPrimary },
-    profileHandle: { fontFamily: 'DMSans-Regular', fontSize: 13, color: C.textMuted },
+    profileName: { fontFamily: 'Syne-Bold', fontSize: 20, color: '#FFFFFF' },
+    profileHandle: { fontFamily: 'DMSans-Regular', fontSize: 13, color: 'rgba(255,255,255,0.5)' },
     connectedBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
     connectedDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.success },
     connectedText: { fontFamily: 'DMSans-Regular', fontSize: 12, color: C.success },
-    editBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.bgGlass, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
-    statsRow: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: C.border, paddingTop: 14 },
+    editBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
+    statsRow: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 14 },
     stat: { flex: 1, alignItems: 'center', gap: 2 },
-    statValue: { fontFamily: 'Syne-Bold', fontSize: 17, color: C.textPrimary },
-    statLabel: { fontFamily: 'DMSans-Regular', fontSize: 11, color: C.textMuted },
-    statDivider: { width: 1, height: 32, backgroundColor: C.border, alignSelf: 'center' },
+    statValue: { fontFamily: 'Syne-Bold', fontSize: 17, color: '#FFFFFF' },
+    statLabel: { fontFamily: 'DMSans-Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)' },
+    statDivider: { width: 1, height: 32, backgroundColor: 'rgba(255,255,255,0.1)', alignSelf: 'center' },
     // Token balance card
     tokenCard: { borderRadius: 18, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     tokenLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },

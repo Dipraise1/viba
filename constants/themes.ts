@@ -13,7 +13,7 @@ export const darkColors = {
   gradientPurple: ['#7B2FFF', '#A855F7'] as const,
   gradientBrand: ['#FF2D87', '#A855F7', '#7B2FFF'] as const,
   gradientBrandH: ['#7B2FFF', '#FF2D87'] as const,
-  gradientCard: ['rgba(255,45,135,0.18)', 'rgba(123,47,255,0.18)'] as const,
+  gradientCard: ['rgba(255,45,135,0.22)', 'rgba(123,47,255,0.20)'] as const,
 
   bg: '#080713',
   bgDeep: '#05050F',

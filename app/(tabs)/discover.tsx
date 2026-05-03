@@ -76,6 +76,12 @@ function timeAgo(iso: string | null) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function compactNumber(n: number) {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return String(n);
+}
+
 const CATEGORIES = ['All', 'Trending', 'Music', 'Gaming', 'Talk', 'Beauty', 'Fitness'];
 
 function PulseDot({ size = 8, color = '#FF2D87' }: { size?: number; color?: string }) {
@@ -112,6 +118,7 @@ function LiveCard({ creator, index }: { creator: CreatorRow; index: number }) {
     <Animated.View entering={FadeInDown.delay(index * 60).duration(400)} style={{ width: CARD_W }}>
       <TouchableOpacity activeOpacity={0.88} style={liveCardS.card}>
         <LinearGradient colors={grad} style={liveCardS.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <View style={liveCardS.lightSlash} />
           <View style={liveCardS.topRow}>
             <View style={liveCardS.liveBadge}>
               <PulseDot size={5} color="#FFFFFF" />
@@ -151,6 +158,11 @@ function LiveCard({ creator, index }: { creator: CreatorRow; index: number }) {
               </View>
             )}
           </View>
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.56)']}
+            style={liveCardS.bottomFade}
+            pointerEvents="none"
+          />
         </LinearGradient>
       </TouchableOpacity>
     </Animated.View>
@@ -158,8 +170,36 @@ function LiveCard({ creator, index }: { creator: CreatorRow; index: number }) {
 }
 
 const liveCardS = StyleSheet.create({
-  card: { borderRadius: 16, overflow: 'hidden', height: CARD_H },
+  card: {
+    borderRadius: 18,
+    overflow: 'hidden',
+    height: CARD_H,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    elevation: 8,
+  },
   gradient: { flex: 1, padding: 10 },
+  lightSlash: {
+    position: 'absolute',
+    top: -24,
+    left: -34,
+    width: '88%',
+    height: 70,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    transform: [{ rotate: '-18deg' }],
+  },
+  bottomFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '46%',
+  },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   liveBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -299,6 +339,7 @@ export default function DiscoverScreen() {
 
   const liveCreators = all.filter((c) => c.is_live);
   const recentCreators = all.filter((c) => !c.is_live && c.stream_count > 0);
+  const totalViewers = liveCreators.reduce((sum, c) => sum + (c.total_viewers ?? 0), 0);
 
   const load = useCallback(async () => {
     // Try trending_creators (algorithm-ranked); fall back to creator_discover
@@ -332,13 +373,53 @@ export default function DiscoverScreen() {
 
   return (
     <View style={styles.container}>
+      <LinearGradient
+        colors={['rgba(0,212,170,0.08)', 'transparent', 'rgba(255,45,135,0.06)']}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        pointerEvents="none"
+      />
+      <View style={styles.topAccent} pointerEvents="none" />
       <View style={[styles.topBar, { paddingTop: insets.top + 10 }]}>
-        {liveCreators.length > 0 && (
-          <View style={styles.countBadge}>
-            <PulseDot size={6} color={C.pink} />
-            <Text style={styles.countText}>{liveCreators.length} live</Text>
+        <View style={styles.titleBlock}>
+          <Text style={styles.pageTitle}>Discover</Text>
+          <View style={styles.titleMeta}>
+            <PulseDot size={6} color={liveCreators.length > 0 ? C.pink : C.textMuted} />
+            <Text style={styles.titleMetaText}>
+              {liveCreators.length > 0 ? `${liveCreators.length} live now` : 'Quiet right now'}
+            </Text>
           </View>
-        )}
+        </View>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.iconButton} activeOpacity={0.75} onPress={() => router.push('/search')}>
+            <Ionicons name="search-outline" size={19} color={C.textPrimary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.goLiveButton} activeOpacity={0.82} onPress={() => router.push('/(tabs)/live')}>
+            <LinearGradient
+              colors={['#FF2D87', '#7B2FFF']}
+              style={StyleSheet.absoluteFill}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+            <Ionicons name="radio" size={18} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.statsRow}>
+        <View style={styles.statPill}>
+          <Ionicons name="radio-outline" size={14} color={C.pink} />
+          <Text style={styles.statText}>{liveCreators.length} live</Text>
+        </View>
+        <View style={styles.statPill}>
+          <Ionicons name="eye-outline" size={14} color="#00D4AA" />
+          <Text style={styles.statText}>{compactNumber(totalViewers)} viewers</Text>
+        </View>
+        <View style={styles.statPill}>
+          <Ionicons name="sparkles-outline" size={14} color={C.gold} />
+          <Text style={styles.statText}>{all.length} creators</Text>
+        </View>
       </View>
 
       <ScrollView
@@ -378,16 +459,22 @@ export default function DiscoverScreen() {
           {liveCreators.length === 0 ? (
             <NoLiveState C={C} />
           ) : (
-            <View style={styles.grid}>
-              {liveRows.map((row, ri) => (
-                <View key={ri} style={styles.gridRow}>
-                  {row.map((creator, ci) => (
-                    <LiveCard key={creator.id} creator={creator} index={ri * 2 + ci} />
-                  ))}
-                  {row.length === 1 && <View style={{ width: CARD_W }} />}
-                </View>
-              ))}
-            </View>
+            <>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="radio-outline" size={15} color={C.pink} />
+                <Text style={styles.sectionTitle}>Live Now</Text>
+              </View>
+              <View style={styles.grid}>
+                {liveRows.map((row, ri) => (
+                  <View key={ri} style={styles.gridRow}>
+                    {row.map((creator, ci) => (
+                      <LiveCard key={creator.id} creator={creator} index={ri * 2 + ci} />
+                    ))}
+                    {row.length === 1 && <View style={{ width: CARD_W }} />}
+                  </View>
+                ))}
+              </View>
+            </>
           )}
 
           {recentCreators.length > 0 && (
@@ -416,17 +503,73 @@ export default function DiscoverScreen() {
 
 function makeStyles(C: AppColors) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: C.bg },
+    container: { flex: 1, backgroundColor: C.bg, overflow: 'hidden' },
+    topAccent: {
+      position: 'absolute',
+      top: -52,
+      right: -88,
+      width: W * 0.88,
+      height: 172,
+      borderRadius: 34,
+      backgroundColor: 'rgba(0,212,170,0.08)',
+      transform: [{ rotate: '-15deg' }],
+    },
     topBar: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-      paddingHorizontal: H_PAD, paddingBottom: 10,
+      paddingHorizontal: H_PAD, paddingBottom: 12,
     },
+    titleBlock: { gap: 5 },
     pageTitle: { fontFamily: 'Syne-ExtraBold', fontSize: 26, color: C.textPrimary },
-    countBadge: {
-      flexDirection: 'row', alignItems: 'center', gap: 6,
-      backgroundColor: C.pinkDim, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5,
+    titleMeta: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+    titleMetaText: { fontFamily: 'DMSans-Medium', fontSize: 12, color: C.textMuted },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+    iconButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: C.bgCard,
+      borderWidth: 1,
+      borderColor: C.border,
     },
-    countText: { fontFamily: 'DMSans-Bold', fontSize: 12, color: C.pink },
+    goLiveButton: {
+      width: 42,
+      height: 42,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+      shadowColor: C.pink,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.26,
+      shadowRadius: 14,
+      elevation: 7,
+    },
+    statsRow: {
+      flexDirection: 'row',
+      gap: 8,
+      paddingHorizontal: H_PAD,
+      paddingBottom: 13,
+    },
+    statPill: {
+      flex: 1,
+      minHeight: 34,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: C.bgCard,
+      borderWidth: 1,
+      borderColor: C.border,
+      borderRadius: 13,
+      paddingHorizontal: 8,
+    },
+    statText: {
+      fontFamily: 'DMSans-Bold',
+      fontSize: 11,
+      color: C.textSecondary,
+    },
     catScroll: { flexGrow: 0 },
     catContent: { paddingHorizontal: H_PAD, gap: 8, paddingBottom: 12 },
     catPill: {

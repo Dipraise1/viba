@@ -431,7 +431,7 @@ export default function ConnectScreen() {
 
   const handleContinue = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push('/onboarding/notifications');
+    router.push('/onboarding/gmail');
   };
 
   return (
@@ -442,7 +442,7 @@ export default function ConnectScreen() {
           <Ionicons name="chevron-back" size={22} color={Colors.textSecondary} />
         </TouchableOpacity>
         <View style={styles.stepPill}>
-          <Text style={styles.stepText}>3 of 5</Text>
+          <Text style={styles.stepText}>3 of 6</Text>
         </View>
       </Animated.View>
 

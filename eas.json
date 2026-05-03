@@ -17,6 +17,12 @@
         "resourceClass": "m-medium"
       }
     },
+    "apk": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "ios": {
@@ -27,7 +33,9 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "prettyler5@gmail.com"
+        "appleId": "prettyler5@gmail.com",
+        "appleTeamId": "RG95FTD69Q",
+        "ascAppId": "6762552621"
       }
     }
   }

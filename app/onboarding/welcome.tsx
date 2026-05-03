@@ -78,14 +78,8 @@ export default function WelcomeScreen() {
 
       <View style={styles.content}>
         {/* Logo */}
-        <Animated.View entering={FadeInDown.delay(200).duration(800).springify()}>
+        <Animated.View entering={FadeInDown.delay(200).duration(800).springify()} style={styles.logoWrapper}>
           <LogoV />
-          <Animated.Text
-            entering={FadeInDown.delay(400).duration(600)}
-            style={styles.brandName}
-          >
-            viba
-          </Animated.Text>
         </Animated.View>
 
         {/* Tagline */}
@@ -166,9 +160,13 @@ const styles = StyleSheet.create({
     letterSpacing: 4,
     marginTop: 8,
   },
+  logoWrapper: {
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   taglineContainer: {
     alignItems: 'center',
-    marginTop: 40,
+    marginTop: 24,
     marginBottom: 16,
     gap: 4,
   },
