@@ -2,8 +2,33 @@ import 'react-native-get-random-values';
 import 'react-native-url-polyfill/auto';
 import { Buffer } from 'buffer';
 if (typeof global.Buffer === 'undefined') (global as any).Buffer = Buffer;
-import { useEffect, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useEffect, useState, Component } from 'react';
+import { View, StyleSheet, Text } from 'react-native';
+
+// ─── Error boundary — prevents any unhandled JS error from crashing the app ──
+
+class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error) { console.error('[Viba] Unhandled error:', error); }
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={{ flex: 1, backgroundColor: '#05050F', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+          <Text style={{ color: '#FF2D87', fontSize: 32, marginBottom: 16 }}>⚠</Text>
+          <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 8 }}>Something went wrong</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, textAlign: 'center', lineHeight: 20 }}>
+            Please force-close and reopen the app.{'\n'}If the issue persists, reinstall Viba.
+          </Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import Animated, {
@@ -174,11 +199,9 @@ function ThemedApp() {
   const { session } = useAuth();
 
   useEffect(() => {
+    if (!session) return;
     ensureNotificationHandlerConfigured();
-  }, []);
-
-  useEffect(() => {
-    if (session) registerForPushNotifications();
+    registerForPushNotifications();
   }, [session]);
 
   return (
@@ -231,15 +254,17 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <AuthProvider>
-      <AppProvider>
-        <WalletProvider>
-          <ThemeProvider>
-            <ThemedApp />
-            {!introDone && <SplashIntro onFinish={() => setIntroDone(true)} />}
-          </ThemeProvider>
-        </WalletProvider>
-      </AppProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppProvider>
+          <WalletProvider>
+            <ThemeProvider>
+              <ThemedApp />
+              {!introDone && <SplashIntro onFinish={() => setIntroDone(true)} />}
+            </ThemeProvider>
+          </WalletProvider>
+        </AppProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

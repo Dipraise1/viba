@@ -7,12 +7,13 @@ import {
   FlatList,
   Dimensions,
   Modal,
-  Image,
+  ActivityIndicator,
   TextInput,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   ViewToken,
+  GestureResponderEvent,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,10 +25,12 @@ import Animated, {
   withSequence,
   withTiming,
   withSpring,
+  withDelay,
   FadeIn,
   FadeInUp,
   FadeInDown,
 } from 'react-native-reanimated';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/context/ThemeContext';
@@ -68,6 +71,29 @@ const ACCENT_COLORS = [
   '#FF2D87', '#7B2FFF', '#00D4AA', '#FF6B35',
   '#3F5EFB', '#f7971e', '#11998e', '#FC466B',
 ];
+
+// ─── Real video source pool ───────────────────────────────────────────────────
+
+const VIDEO_SOURCES = [
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Subaru_Outback_On_Street_And_Trails.mp4',
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/VolkswagenGTIReview.mp4',
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4',
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WhatCarCanYouGetForAGrand.mp4',
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+];
+
+function getVideoUri(seed: string): string {
+  const s = seed || 'default';
+  const hash = Math.abs(s.split('').reduce((acc, c) => ((acc << 5) - acc) + c.charCodeAt(0), 0));
+  return VIDEO_SOURCES[hash % VIDEO_SOURCES.length];
+}
 
 const POST_CAPTIONS = [
   'Going live tonight at 8PM — don\'t miss it 🔥',
@@ -441,45 +467,96 @@ function VideoCard({
   const [liked, setLiked] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
   const [following, setFollowing] = useState(false);
-  const [playing, setPlaying] = useState(isVisible);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [imgLoaded, setImgLoaded] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [heartPos, setHeartPos] = useState({ x: W / 2, y: SCREEN_H / 3 });
   const likeScale = useSharedValue(1);
+  const heartOpacity = useSharedValue(0);
+  const heartScale = useSharedValue(0);
+  const lastTapRef = useRef(0);
+  const singleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressRef = useRef(0);
 
-  const VIDEO_DURATION = 45 + (item.imgSeed.charCodeAt(0) % 10) * 9;
+  const videoUri = getVideoUri(item.imgSeed || item.id);
+
+  const player = useVideoPlayer({ uri: videoUri }, (p) => {
+    p.loop = true;
+    p.muted = true;
+  });
 
   useEffect(() => {
-    if (!isVisible && progressRef.current > 0) {
-      // Track view with how much was watched when scrolling away
-      const watchPct = Math.min(100, Math.round(progressRef.current * 100));
-      const eventType = watchPct < 10 ? 'skip' : 'view';
-      trackEngagement(item.id, eventType, watchPct);
+    if (isVisible) {
+      player.currentTime = 0;
+      player.play();
+    } else {
+      player.pause();
+      if (!isVisible && progressRef.current > 0) {
+        const watchPct = Math.min(100, Math.round(progressRef.current * 100));
+        trackEngagement(item.id, watchPct < 10 ? 'skip' : 'view', watchPct);
+      }
+      setProgress(0);
+      progressRef.current = 0;
     }
-    setPlaying(isVisible);
-    if (!isVisible) { setProgress(0); progressRef.current = 0; }
   }, [isVisible]);
 
   useEffect(() => {
-    if (playing) {
-      intervalRef.current = setInterval(() => {
-        setProgress((p) => {
-          const next = p >= 1 ? 0 : p + 1 / (VIDEO_DURATION * 10);
-          progressRef.current = next;
-          if (p >= 1) {
-            clearInterval(intervalRef.current!);
-            setPlaying(false);
-            trackEngagement(item.id, 'view', 100);
-          }
-          return next;
-        });
-      }, 100);
+    const timeSub = player.addListener('timeUpdate', (payload: any) => {
+      const dur = player.duration;
+      if (dur > 0) {
+        const p = Math.min(1, payload.currentTime / dur);
+        setProgress(p);
+        progressRef.current = p;
+        if (p >= 1) trackEngagement(item.id, 'view', 100);
+      }
+    });
+    const statusSub = player.addListener('statusChange', (payload: any) => {
+      setIsLoading(payload.status === 'loading' || payload.status === 'idle');
+    });
+    const playingSub = player.addListener('playingChange', (payload: any) => {
+      setIsPlaying(payload.isPlaying);
+    });
+    return () => { timeSub.remove(); statusSub.remove(); playingSub.remove(); };
+  }, [player]);
+
+  const likeStyle = useAnimatedStyle(() => ({ transform: [{ scale: likeScale.value }] }));
+  const heartStyle = useAnimatedStyle(() => ({
+    opacity: heartOpacity.value,
+    transform: [{ scale: heartScale.value }],
+  }));
+
+  const triggerHeartBurst = () => {
+    heartScale.value = 0.2;
+    heartOpacity.value = 1;
+    heartScale.value = withSpring(1.4, { damping: 5, stiffness: 200 });
+    heartOpacity.value = withSequence(
+      withTiming(1, { duration: 50 }),
+      withDelay(400, withTiming(0, { duration: 350 }))
+    );
+  };
+
+  const handlePress = (evt: GestureResponderEvent) => {
+    const now = Date.now();
+    const { locationX, locationY } = evt.nativeEvent;
+    setHeartPos({ x: locationX, y: locationY });
+    if (now - lastTapRef.current < 300) {
+      lastTapRef.current = 0;
+      if (singleTapTimer.current) { clearTimeout(singleTapTimer.current); singleTapTimer.current = null; }
+      if (!liked) {
+        setLiked(true);
+        trackEngagement(item.id, 'like', Math.round(progressRef.current * 100));
+      }
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      triggerHeartBurst();
+      likeScale.value = withSpring(1.4, { damping: 6 }, () => { likeScale.value = withSpring(1); });
     } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      lastTapRef.current = now;
+      singleTapTimer.current = setTimeout(() => {
+        singleTapTimer.current = null;
+        if (player.playing) player.pause(); else player.play();
+      }, 300);
     }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [playing]);
+  };
 
   const handleLike = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -489,26 +566,27 @@ function VideoCard({
     likeScale.value = withSpring(1.4, { damping: 6 }, () => { likeScale.value = withSpring(1); });
   };
 
-  const likeStyle = useAnimatedStyle(() => ({ transform: [{ scale: likeScale.value }] }));
   const fmtNum = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(0)}K` : String(n);
-
   const platforms = (item.creator.platforms ?? []).slice(0, 3);
-  const imgUri = `https://picsum.photos/seed/${item.imgSeed}/600/900`;
 
   return (
     <View style={{ width: W, height: SCREEN_H }}>
-      {/* Background image */}
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setPlaying((v) => !v)}>
-        {/* Dark fallback while image loads */}
+      {/* Video player */}
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={handlePress}>
         <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0a0a14' }]} />
-        <Image
-          source={{ uri: imgUri }}
-          style={[StyleSheet.absoluteFill, { opacity: imgLoaded ? 1 : 0 }]}
-          resizeMode="cover"
-          onLoad={() => setImgLoaded(true)}
+        <VideoView
+          player={player}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          nativeControls={false}
         />
-        {/* Dark overlay so text is always readable */}
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.28)' }]} />
+        {/* Dark overlay */}
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.22)' }]} />
+
+        {/* Loading spinner */}
+        {isLoading && (
+          <ActivityIndicator style={vidS.loadingSpinner} color="rgba(255,255,255,0.7)" size="large" />
+        )}
 
         {/* Live badge */}
         {item.creator.is_live && (
@@ -518,9 +596,8 @@ function VideoCard({
           </View>
         )}
 
-
         {/* Pause indicator */}
-        {!playing && (
+        {!isPlaying && !isLoading && (
           <Animated.View entering={FadeIn.duration(120)} style={vidS.pauseIcon}>
             <Ionicons name="play" size={44} color="rgba(255,255,255,0.75)" />
           </Animated.View>
@@ -533,6 +610,13 @@ function VideoCard({
           start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
         />
 
+        {/* Double-tap heart burst */}
+        <Animated.View
+          style={[vidS.heartBurst, heartStyle, { left: heartPos.x - 40, top: heartPos.y - 40 }]}
+          pointerEvents="none"
+        >
+          <Ionicons name="heart" size={80} color="#FF2D87" />
+        </Animated.View>
       </TouchableOpacity>
 
       {/* ── Right actions ── */}
@@ -629,6 +713,11 @@ function VideoCard({
           <Text style={vidS.musicText} numberOfLines={1}>{item.song}</Text>
         </View>
       </View>
+
+      {/* Progress bar */}
+      <View style={vidS.progressTrack} pointerEvents="none">
+        <View style={[vidS.progressFill, { width: `${(progress * 100).toFixed(1)}%` as any }]} />
+      </View>
     </View>
   );
 }
@@ -637,6 +726,8 @@ const vidS = StyleSheet.create({
   liveBadge: { position: 'absolute', top: 64, left: 16, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FF2D87', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
   liveBadgeText: { fontFamily: 'DMSans-Bold', fontSize: 11, color: '#FFFFFF', letterSpacing: 0.4 },
   pauseIcon: { position: 'absolute', top: '50%', left: '50%', marginTop: -28, marginLeft: -28 },
+  loadingSpinner: { position: 'absolute', top: '50%', left: '50%', marginTop: -18, marginLeft: -18 },
+  heartBurst: { position: 'absolute', width: 80, height: 80, alignItems: 'center', justifyContent: 'center' },
   actions: { position: 'absolute', right: 12, alignItems: 'center', gap: 20 },
   avatarWrap: { position: 'relative', marginBottom: 6 },
   avatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFFFFF' },
@@ -653,6 +744,8 @@ const vidS = StyleSheet.create({
   caption: { fontFamily: 'DMSans-Regular', fontSize: 13, color: '#FFFFFF', lineHeight: 18, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
   musicRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   musicText: { fontFamily: 'DMSans-Medium', fontSize: 12, color: 'rgba(255,255,255,0.85)', flex: 1 },
+  progressTrack: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: 'rgba(255,255,255,0.15)' },
+  progressFill: { height: '100%', backgroundColor: '#FF2D87', borderRadius: 2 },
 });
 
 // ─── Main screen ──────────────────────────────────────────────────────────────

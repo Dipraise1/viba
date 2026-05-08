@@ -1,8 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { PlatformId } from '@/constants/platforms';
-import { supabase } from '@/lib/supabase';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { fetchRestreamChannels, RESTREAM_CHANNEL_MAP } from '@/lib/restream';
-import { connectYouTube, connectTwitch, connectFacebook, disconnectPlatform } from '@/lib/platformAuth';
+import {
+  connectPlatform,
+  disconnectPlatform,
+  loadPlatformConnections,
+  subscribeToPlatformChanges,
+  type DirectPlatform,
+} from '@/lib/platformAuth';
 
 export const MIN_VIBA_TO_STREAM = 10; // minimum tokens required to go live
 export const VIBA_EARN_RATE = 1;      // tokens earned per second while live
@@ -92,8 +98,9 @@ interface AppState {
   platformStreamKeys: Record<string, string>;
   setPlatformStreamKey: (platform: string, key: string) => Promise<void>;
   // Direct OAuth connect (no Restream required)
-  connectedTokens: Record<string, boolean>; // platform → has access token
-  connectPlatformOAuth: (platform: 'youtube' | 'twitch' | 'facebook') => Promise<void>;
+  connectedTokens: Record<string, boolean>; // platform → has active token
+  expiredPlatforms: PlatformId[];           // platforms needing reconnect
+  connectPlatformOAuth: (platform: DirectPlatform) => Promise<void>;
 
   updateProfile: (p: Partial<UserProfile>) => Promise<void>;
   togglePlatform: (id: PlatformId) => void;
@@ -122,6 +129,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [restreamToken, setRestreamTokenState] = useState('');
   const [platformStreamKeys, setPlatformStreamKeysState] = useState<Record<string, string>>({});
   const [connectedTokens, setConnectedTokens] = useState<Record<string, boolean>>({});
+  const [expiredPlatforms, setExpiredPlatforms] = useState<PlatformId[]>([]);
 
   const [platforms, setPlatforms] = useState<ConnectedPlatform[]>(DEFAULT_PLATFORMS);
 
@@ -186,6 +194,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => { tokenBalanceRef.current = tokenBalance; }, [tokenBalance]);
 
   const syncTokenBalance = async () => {
+    if (!isSupabaseConfigured) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     await supabase.from('profiles').update({ viba_balance: tokenBalanceRef.current }).eq('id', user.id);
@@ -205,7 +214,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Load profile from Supabase when session exists
   useEffect(() => {
+    let platformSub: ReturnType<typeof subscribeToPlatformChanges> | null = null;
+
+    const applyConnections = (rows: Awaited<ReturnType<typeof loadPlatformConnections>>) => {
+      const expired = rows
+        .filter((c) => c.status === 'expired')
+        .map((c) => c.platform as PlatformId);
+      setExpiredPlatforms(expired);
+
+      const activeTokens: Record<string, boolean> = {};
+      const keys: Record<string, string> = {};
+      rows.forEach((c) => {
+        if (c.status === 'active') activeTokens[c.platform] = true;
+        if (c.stream_key) keys[c.platform] = c.stream_key;
+      });
+      setConnectedTokens(activeTokens);
+      setPlatformStreamKeysState((prev) => ({ ...prev, ...keys }));
+
+      setPlatforms((prev) =>
+        prev.map((p) => {
+          const conn = rows.find((c) => c.platform === p.id);
+          if (!conn) return { ...p, connected: false, username: undefined };
+          return {
+            ...p,
+            connected: conn.status === 'active',
+            username: conn.username ?? undefined,
+          };
+        })
+      );
+    };
+
     const loadProfile = async () => {
+      if (!isSupabaseConfigured) return;
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -223,9 +264,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           avatarUrl: data.avatar_url ?? undefined,
         });
         if (data.restream_key) setRestreamKeyState(data.restream_key);
-        if (data.stream_keys) setPlatformStreamKeysState(data.stream_keys);
 
-        // Persist token balance — give 50 welcome bonus to new users
         const dbBalance: number = data.viba_balance ?? 0;
         if (dbBalance === 0) {
           setTokenBalance(50);
@@ -235,88 +274,64 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Load Restream OAuth token if stored
-      const { data: tokenRow } = await supabase
-        .from('platform_tokens')
-        .select('access_token')
-        .eq('user_id', user.id)
-        .eq('platform', 'restream')
-        .single();
-      if (tokenRow?.access_token) {
-        setRestreamTokenState(tokenRow.access_token);
-        // Auto-sync connected platforms from Restream
-        const channels = await fetchRestreamChannels(tokenRow.access_token);
-        if (channels.length > 0) {
-          const connectedIds = new Set(
-            channels
-              .filter((ch) => ch.active && RESTREAM_CHANNEL_MAP[ch.channelTypeId])
-              .map((ch) => RESTREAM_CHANNEL_MAP[ch.channelTypeId])
-          );
-          setPlatforms((prev) =>
-            prev.map((p) => ({
-              ...p,
-              connected: connectedIds.has(p.id),
-              username: connectedIds.has(p.id)
-                ? (channels.find((ch) => RESTREAM_CHANNEL_MAP[ch.channelTypeId] === p.id)?.displayName ?? undefined)
-                : undefined,
-            }))
-          );
+      // Load all platform connections from the unified table
+      const connections = await loadPlatformConnections(user.id);
+      applyConnections(connections);
+
+      // Pull Restream access token so live chat/viewers still work
+      const restreamConn = connections.find((c) => c.platform === 'restream' && c.status === 'active');
+      if (!restreamConn) {
+        // Fallback: check legacy platform_tokens table
+        const { data: tokenRow } = await supabase
+          .from('platform_tokens')
+          .select('access_token')
+          .eq('user_id', user.id)
+          .eq('platform', 'restream')
+          .maybeSingle();
+        if (tokenRow?.access_token) setRestreamTokenState(tokenRow.access_token);
+      }
+
+      // Subscribe to Realtime — auto-update when OAuth callback writes to platform_connections
+      platformSub?.unsubscribe();
+      platformSub = subscribeToPlatformChanges(user.id, async () => {
+        const updated = await loadPlatformConnections(user.id);
+        applyConnections(updated);
+        // Refresh Restream token if it changed
+        const rsConn = updated.find((c) => c.platform === 'restream' && c.status === 'active');
+        if (rsConn) {
+          const { data: tr } = await supabase
+            .from('platform_connections')
+            .select('access_token')
+            .eq('user_id', user.id)
+            .eq('platform', 'restream')
+            .maybeSingle();
+          if (tr?.access_token) setRestreamTokenState(tr.access_token);
         }
-      }
-
-      // Load connected platforms
-      const { data: platformData } = await supabase
-        .from('connected_platforms')
-        .select('platform, username')
-        .eq('user_id', user.id);
-
-      if (platformData && platformData.length > 0) {
-        setPlatforms((prev) =>
-          prev.map((p) => {
-            const found = platformData.find((r) => r.platform === p.id);
-            return found
-              ? { ...p, connected: true, username: found.username ?? undefined }
-              : p;
-          })
-        );
-      }
-
-      // Load direct platform OAuth tokens (YouTube, Twitch, Facebook)
-      const { data: tokenRows } = await supabase
-        .from('platform_tokens')
-        .select('platform')
-        .eq('user_id', user.id)
-        .in('platform', ['youtube', 'twitch', 'facebook']);
-
-      if (tokenRows && tokenRows.length > 0) {
-        const tokens: Record<string, boolean> = {};
-        tokenRows.forEach((r) => { tokens[r.platform] = true; });
-        setConnectedTokens(tokens);
-        // Mark platforms as connected
-        setPlatforms((prev) =>
-          prev.map((p) =>
-            tokens[p.id] ? { ...p, connected: true } : p
-          )
-        );
-      }
+      });
     };
 
     loadProfile();
 
-    // Re-load when auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_IN') loadProfile();
       if (event === 'SIGNED_OUT') {
         setProfile({ displayName: 'Creator', handle: '@creator' });
         setPlatforms(DEFAULT_PLATFORMS);
+        setExpiredPlatforms([]);
+        platformSub?.unsubscribe();
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      platformSub?.unsubscribe();
+    };
   }, []);
 
   const updateProfile = async (p: Partial<UserProfile>) => {
     setProfile((prev) => ({ ...prev, ...p }));
+
+    if (!isSupabaseConfigured) return;
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -335,6 +350,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setRestreamKey = async (key: string) => {
     setRestreamKeyState(key);
+    if (!isSupabaseConfigured) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     await supabase.from('profiles').update({ restream_key: key }).eq('id', user.id);
@@ -342,6 +358,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setRestreamToken = async (token: string) => {
     setRestreamTokenState(token);
+    if (!isSupabaseConfigured) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     await supabase.from('platform_tokens').upsert({
@@ -373,6 +390,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const updated = { ...platformStreamKeys, [platform]: key };
     if (!key) delete updated[platform];
     setPlatformStreamKeysState(updated);
+    if (!isSupabaseConfigured) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     await supabase.from('profiles').update({ stream_keys: updated }).eq('id', user.id);
@@ -397,62 +415,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const connectPlatformOAuth = async (platform: 'youtube' | 'twitch' | 'facebook') => {
-    const connectors = { youtube: connectYouTube, twitch: connectTwitch, facebook: connectFacebook };
-    const { streamKey, username } = await connectors[platform]();
+  const connectPlatformOAuth = async (platform: DirectPlatform) => {
+    if (!isSupabaseConfigured) return;
+    const { username, streamKey } = await connectPlatform(platform);
 
-    // Save stream key locally
-    if (streamKey) {
-      const updated = { ...platformStreamKeys, [platform]: streamKey };
-      setPlatformStreamKeysState(updated);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) await supabase.from('profiles').update({ stream_keys: updated }).eq('id', user.id);
-    }
-
-    // Mark as connected with token
+    // Optimistically update state — Realtime will confirm and refresh everything
+    if (streamKey) setPlatformStreamKeysState((prev) => ({ ...prev, [platform]: streamKey }));
     setConnectedTokens((prev) => ({ ...prev, [platform]: true }));
+    setExpiredPlatforms((prev) => prev.filter((id) => id !== platform));
     setPlatforms((prev) =>
       prev.map((p) =>
         p.id === platform ? { ...p, connected: true, username: username ?? p.username } : p
       )
     );
+
+    // For Restream: refresh the token so live chat works immediately
+    if (platform === 'restream') {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: tr } = await supabase
+          .from('platform_connections')
+          .select('access_token')
+          .eq('user_id', user.id)
+          .eq('platform', 'restream')
+          .maybeSingle();
+        if (tr?.access_token) setRestreamTokenState(tr.access_token);
+      }
+    }
   };
 
   const togglePlatform = async (id: PlatformId) => {
     const current = platforms.find((p) => p.id === id);
     if (!current) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
-
     if (current.connected) {
-      // Disconnect
+      // Optimistic update
       setPlatforms((prev) =>
         prev.map((p) => p.id === id ? { ...p, connected: false, username: undefined } : p)
       );
       setConnectedTokens((prev) => { const next = { ...prev }; delete next[id]; return next; });
-      if (user) {
-        await supabase
-          .from('connected_platforms')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('platform', id);
-        // Also clear OAuth token for direct-connect platforms
-        if (['youtube', 'twitch', 'facebook'].includes(id)) {
-          await disconnectPlatform(id);
-        }
-      }
-    } else {
-      // Connect (OAuth flow handled by the UI — this just saves the result)
-      const username = `@${profile.handle.replace('@', '')}_${id}`;
-      setPlatforms((prev) =>
-        prev.map((p) => p.id === id ? { ...p, connected: true, username } : p)
-      );
-      if (user) {
-        await supabase
-          .from('connected_platforms')
-          .upsert({ user_id: user.id, platform: id, username });
-      }
+      setExpiredPlatforms((prev) => prev.filter((p) => p !== id));
+      // Delete from unified table (also handles legacy platform_tokens)
+      await disconnectPlatform(id);
     }
+    // Connect is always handled via connectPlatformOAuth (OAuth flow)
   };
 
   return (
@@ -481,6 +487,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         platformStreamKeys,
         setPlatformStreamKey,
         connectedTokens,
+        expiredPlatforms,
         connectPlatformOAuth,
         updateProfile,
         togglePlatform,

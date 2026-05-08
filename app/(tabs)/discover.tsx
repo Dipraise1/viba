@@ -84,6 +84,14 @@ function compactNumber(n: number) {
 
 const CATEGORIES = ['All', 'Trending', 'Music', 'Gaming', 'Talk', 'Beauty', 'Fitness'];
 
+const CATEGORY_TAGS: Record<string, string[]> = {
+  Music:   ['music', 'beats', 'dj', 'tune', 'sound', 'mellow', 'velvet'],
+  Gaming:  ['gaming', 'fps', 'game', 'play', 'kraken', 'cyber', 'omega', 'rex', 'frost', 'axis'],
+  Talk:    ['talk', 'cast', 'voice', 'chat', 'sunny', 'luna', 'zay'],
+  Beauty:  ['beauty', 'art', 'amara', 'nova', 'rose', 'pixel', 'soleil', 'mirakle'],
+  Fitness: ['fit', 'gym', 'health', 'thrill', 'soleil'],
+};
+
 function PulseDot({ size = 8, color = '#FF2D87' }: { size?: number; color?: string }) {
   const scale = useSharedValue(1);
   const opacity = useSharedValue(1);
@@ -116,7 +124,11 @@ function LiveCard({ creator, index }: { creator: CreatorRow; index: number }) {
 
   return (
     <Animated.View entering={FadeInDown.delay(index * 60).duration(400)} style={{ width: CARD_W }}>
-      <TouchableOpacity activeOpacity={0.88} style={liveCardS.card}>
+      <TouchableOpacity
+        activeOpacity={0.88}
+        style={liveCardS.card}
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(`/user/${creator.id}` as any); }}
+      >
         <LinearGradient colors={grad} style={liveCardS.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
           <View style={liveCardS.lightSlash} />
           <View style={liveCardS.topRow}>
@@ -237,40 +249,46 @@ function RecentRow({ creator, index }: { creator: CreatorRow; index: number }) {
   const grad = creatorGradient(creator.id);
 
   return (
-    <Animated.View entering={FadeInDown.delay(index * 50).duration(350)} style={recentS.row}>
-      <LinearGradient colors={grad} style={recentS.avatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-        <Text style={recentS.avatarText}>{initials(creator.display_name || creator.handle)}</Text>
-      </LinearGradient>
-      <View style={recentS.info}>
-        <Text style={[recentS.name, { color: C.textPrimary }]} numberOfLines={1}>
-          {creator.display_name || creator.handle}
-        </Text>
-        <View style={recentS.metaRow}>
-          <Text style={[recentS.meta, { color: C.textMuted }]}>{timeAgo(creator.last_streamed_at)}</Text>
-          {creator.stream_count > 0 && (
-            <>
-              <Text style={[recentS.dot, { color: C.textMuted }]}>·</Text>
-              <Text style={[recentS.meta, { color: C.textMuted }]}>
-                {creator.stream_count} stream{creator.stream_count !== 1 ? 's' : ''}
-              </Text>
-            </>
-          )}
+    <Animated.View entering={FadeInDown.delay(index * 50).duration(350)}>
+      <TouchableOpacity
+        activeOpacity={0.75}
+        style={recentS.row}
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(`/user/${creator.id}` as any); }}
+      >
+        <LinearGradient colors={grad} style={recentS.avatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <Text style={recentS.avatarText}>{initials(creator.display_name || creator.handle)}</Text>
+        </LinearGradient>
+        <View style={recentS.info}>
+          <Text style={[recentS.name, { color: C.textPrimary }]} numberOfLines={1}>
+            {creator.display_name || creator.handle}
+          </Text>
+          <View style={recentS.metaRow}>
+            <Text style={[recentS.meta, { color: C.textMuted }]}>{timeAgo(creator.last_streamed_at)}</Text>
+            {creator.stream_count > 0 && (
+              <>
+                <Text style={[recentS.dot, { color: C.textMuted }]}>·</Text>
+                <Text style={[recentS.meta, { color: C.textMuted }]}>
+                  {creator.stream_count} stream{creator.stream_count !== 1 ? 's' : ''}
+                </Text>
+              </>
+            )}
+          </View>
         </View>
-      </View>
-      {(creator.platforms ?? []).length > 0 && (
-        <View style={recentS.platforms}>
-          {(creator.platforms ?? []).slice(0, 3).map((p) => {
-            try {
-              const plat = getPlatform(p as any);
-              return (
-                <View key={p} style={[recentS.platDot, { backgroundColor: plat.gradient[0] + '22' }]}>
-                  <FontAwesome5 name={plat.icon} size={8} color={plat.gradient[0]} solid />
-                </View>
-              );
-            } catch { return null; }
-          })}
-        </View>
-      )}
+        {(creator.platforms ?? []).length > 0 && (
+          <View style={recentS.platforms}>
+            {(creator.platforms ?? []).slice(0, 3).map((p) => {
+              try {
+                const plat = getPlatform(p as any);
+                return (
+                  <View key={p} style={[recentS.platDot, { backgroundColor: plat.gradient[0] + '22' }]}>
+                    <FontAwesome5 name={plat.icon} size={8} color={plat.gradient[0]} solid />
+                  </View>
+                );
+              } catch { return null; }
+            })}
+          </View>
+        )}
+      </TouchableOpacity>
     </Animated.View>
   );
 }
@@ -337,8 +355,20 @@ export default function DiscoverScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
 
-  const liveCreators = all.filter((c) => c.is_live);
-  const recentCreators = all.filter((c) => !c.is_live && c.stream_count > 0);
+  const filteredAll = useMemo(() => {
+    if (activeCategory === 'All') return all;
+    if (activeCategory === 'Trending') return [...all].sort((a, b) => (b.total_viewers ?? 0) - (a.total_viewers ?? 0));
+    const tags = CATEGORY_TAGS[activeCategory] ?? [];
+    return all.filter((c) => {
+      const combined = `${c.handle} ${c.display_name}`.toLowerCase();
+      if (tags.some((t) => combined.includes(t))) return true;
+      const hash = c.id.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+      return hash % (CATEGORIES.length - 2) === CATEGORIES.indexOf(activeCategory) % (CATEGORIES.length - 2);
+    });
+  }, [all, activeCategory]);
+
+  const liveCreators = filteredAll.filter((c) => c.is_live);
+  const recentCreators = filteredAll.filter((c) => !c.is_live && c.stream_count > 0);
   const totalViewers = liveCreators.reduce((sum, c) => sum + (c.total_viewers ?? 0), 0);
 
   const load = useCallback(async () => {

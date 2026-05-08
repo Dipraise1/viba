@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Modal,
   Image,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -42,9 +42,9 @@ const PLATFORM_PERKS: Record<string, string[]> = {
 // ─── Connect modal ────────────────────────────────────────────────────────────
 
 function ConnectModal({
-  platformId, visible, onDone, onCancel,
+  platformId, visible, onDone, onCancel, isReconnect,
 }: {
-  platformId: PlatformId | null; visible: boolean; onDone: () => void; onCancel: () => void;
+  platformId: PlatformId | null; visible: boolean; onDone: () => void; onCancel: () => void; isReconnect?: boolean;
 }) {
   const [connecting, setConnecting] = useState(false);
   const platform = platformId ? getPlatform(platformId) : null;
@@ -60,9 +60,11 @@ function ConnectModal({
     setConnecting(true);
     try {
       if (isDirect) {
+        // Unified OAuth flow for YouTube, Twitch, Facebook
         await connectPlatformOAuth(platformId as 'youtube' | 'twitch' | 'facebook');
         onDone();
       } else {
+        // TikTok / Instagram via Restream — open Restream's channel connector
         const url = getRestreamAddChannelUrl(platformId);
         await WebBrowser.openBrowserAsync(url, { presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET });
         onDone();
@@ -85,11 +87,13 @@ function ConnectModal({
           <LinearGradient colors={platform.gradient as any} style={oauthStyles.brandIcon} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
             <FontAwesome5 name={platform.icon} size={30} color="#FFFFFF" solid />
           </LinearGradient>
-          <Text style={oauthStyles.title}>Connect {platform.name}</Text>
+          <Text style={oauthStyles.title}>{isReconnect ? 'Reconnect' : 'Connect'} {platform.name}</Text>
           <Text style={oauthStyles.sub}>
-            {isDirect
-              ? `Sign in with ${platform.name} to connect directly. Viba will auto-fetch your stream key.`
-              : `You'll be taken to Restream to connect ${platform.name}. Come back once done.`}
+            {isReconnect
+              ? `Your ${platform.name} session expired. Sign in again to restore your connection.`
+              : isDirect
+                ? `Sign in with ${platform.name} to connect directly. Viba will auto-fetch your stream key.`
+                : `You'll be taken to Restream to connect ${platform.name}. Come back once done.`}
           </Text>
           <View style={oauthStyles.permList}>
             {perks.map((p) => (
@@ -109,7 +113,7 @@ function ConnectModal({
               <LinearGradient colors={platform.gradient as any} style={oauthStyles.authBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                 {connecting
                   ? <ActivityIndicator color="#FFFFFF" size="small" />
-                  : <><FontAwesome5 name={platform.icon} size={13} color="#FFFFFF" solid /><Text style={oauthStyles.authBtnText}>{isDirect ? `Continue with ${platform.name}` : 'Connect via Restream'}</Text></>}
+                  : <><FontAwesome5 name={platform.icon} size={13} color="#FFFFFF" solid /><Text style={oauthStyles.authBtnText}>{isDirect ? (isReconnect ? `Reconnect ${platform.name}` : `Continue with ${platform.name}`) : 'Connect via Restream'}</Text></>}
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -142,10 +146,7 @@ function makeOAuthStyles(C: AppColors) {
 
 // ─── Post grid data ───────────────────────────────────────────────────────────
 
-const { width: SCREEN_W } = Dimensions.get('window');
 const POST_GAP = 2;
-const POST_CELL = Math.floor((SCREEN_W - 40 - POST_GAP * 2) / 3);
-const POST_CELL_H = Math.floor(POST_CELL * 1.35);
 
 interface PostRow {
   id: string;
@@ -164,12 +165,14 @@ type ContentTab = 'posts' | 'drafts' | 'reposts' | 'streams';
 // ─── Post grid ────────────────────────────────────────────────────────────────
 
 function PostGrid({
-  posts, isDraft, styles, C,
+  posts, isDraft, styles, C, cellWidth, cellHeight,
 }: {
   posts: PostRow[];
   isDraft?: boolean;
   styles: ReturnType<typeof makeStyles>;
   C: AppColors;
+  cellWidth: number;
+  cellHeight: number;
 }) {
   if (posts.length === 0) return null;
   return (
@@ -178,7 +181,7 @@ function PostGrid({
         <TouchableOpacity
           key={post.id}
           activeOpacity={0.85}
-          style={[styles.postCell, { width: POST_CELL, height: POST_CELL_H }]}
+          style={[styles.postCell, { width: cellWidth, height: cellHeight }]}
         >
           <View style={[StyleSheet.absoluteFill, { backgroundColor: '#111' }]} />
           {post.thumbnail_url ? (
@@ -217,7 +220,10 @@ function PostGrid({
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { profile, platforms, togglePlatform, syncPlatformsFromRestream, restreamToken, connectPlatformOAuth } = useApp();
+  const { width: screenW } = useWindowDimensions();
+  const postCellW = Math.floor((screenW - 40 - POST_GAP * 2) / 3);
+  const postCellH = Math.floor(postCellW * 1.35);
+  const { profile, platforms, togglePlatform, syncPlatformsFromRestream, restreamToken, connectPlatformOAuth, expiredPlatforms } = useApp();
   const { user } = useAuth();
   const { colors: C } = useTheme();
   const styles = useMemo(() => makeStyles(C), [C]);
@@ -290,6 +296,7 @@ export default function ProfileScreen() {
   };
 
   const handleConnect = (id: PlatformId) => { setOauthTarget(id); setOauthVisible(true); };
+  const isReconnecting = oauthTarget ? expiredPlatforms.includes(oauthTarget) : false;
 
   const handleConnectDone = async () => {
     setOauthVisible(false);
@@ -415,18 +422,34 @@ export default function ProfileScreen() {
           >
             {platforms.map((p) => {
               const platform = getPlatform(p.id);
+              const isExpired = expiredPlatforms.includes(p.id);
               return (
                 <TouchableOpacity
                   key={p.id}
-                  style={[styles.platformChip, p.connected && { borderColor: C.success + '60', backgroundColor: C.successDim }]}
-                  onPress={() => p.connected ? handleDisconnect(p.id, platform.name) : handleConnect(p.id)}
+                  style={[
+                    styles.platformChip,
+                    p.connected && !isExpired && { borderColor: C.success + '60', backgroundColor: C.successDim },
+                    isExpired && { borderColor: '#FF8C00' + '80', backgroundColor: 'rgba(255,140,0,0.08)' },
+                  ]}
+                  onPress={() => {
+                    if (isExpired) { handleConnect(p.id); return; }
+                    p.connected ? handleDisconnect(p.id, platform.name) : handleConnect(p.id);
+                  }}
                   activeOpacity={0.75}
                 >
                   <View style={[styles.platformChipIcon, { backgroundColor: platform.gradient[0] as string }]}>
                     <FontAwesome5 name={platform.icon} size={11} color="#FFFFFF" solid />
                   </View>
-                  <Text style={[styles.platformChipName, p.connected && { color: C.success }]}>{platform.name}</Text>
-                  {p.connected && <View style={styles.platformChipDot} />}
+                  <Text style={[
+                    styles.platformChipName,
+                    p.connected && !isExpired && { color: C.success },
+                    isExpired && { color: '#FF8C00' },
+                  ]}>
+                    {platform.name}
+                  </Text>
+                  {isExpired
+                    ? <View style={styles.platformChipExpired}><Text style={styles.platformChipExpiredText}>!</Text></View>
+                    : p.connected && <View style={styles.platformChipDot} />}
                 </TouchableOpacity>
               );
             })}
@@ -466,7 +489,7 @@ export default function ProfileScreen() {
         <Animated.View entering={FadeInDown.delay(340).duration(400)}>
           {contentTab === 'posts' && (
             posts.length > 0
-              ? <PostGrid posts={posts} styles={styles} C={C} />
+              ? <PostGrid posts={posts} styles={styles} C={C} cellWidth={postCellW} cellHeight={postCellH} />
               : <View style={styles.emptyContent}>
                   <Ionicons name="grid-outline" size={36} color={C.textMuted} />
                   <Text style={[styles.emptyTitle, { color: C.textPrimary }]}>No posts yet</Text>
@@ -475,7 +498,7 @@ export default function ProfileScreen() {
           )}
           {contentTab === 'drafts' && (
             drafts.length > 0
-              ? <PostGrid posts={drafts} isDraft styles={styles} C={C} />
+              ? <PostGrid posts={drafts} isDraft styles={styles} C={C} cellWidth={postCellW} cellHeight={postCellH} />
               : <View style={styles.emptyContent}>
                   <Ionicons name="document-text-outline" size={36} color={C.textMuted} />
                   <Text style={[styles.emptyTitle, { color: C.textPrimary }]}>No drafts yet</Text>
@@ -535,6 +558,7 @@ export default function ProfileScreen() {
       <ConnectModal
         platformId={oauthTarget}
         visible={oauthVisible}
+        isReconnect={isReconnecting}
         onDone={handleConnectDone}
         onCancel={() => { setOauthVisible(false); setOauthTarget(null); }}
       />
@@ -590,6 +614,8 @@ function makeStyles(C: AppColors) {
     platformChipIcon: { width: 24, height: 24, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
     platformChipName: { fontFamily: 'DMSans-Medium', fontSize: 12, color: C.textSecondary },
     platformChipDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.success },
+    platformChipExpired: { width: 16, height: 16, borderRadius: 8, backgroundColor: '#FF8C00', alignItems: 'center', justifyContent: 'center' },
+    platformChipExpiredText: { fontFamily: 'Syne-Bold', fontSize: 10, color: '#FFFFFF', lineHeight: 16 },
     // Catalog tabs
     catalogTabRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: C.border },
     catalogTabBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, gap: 4 },

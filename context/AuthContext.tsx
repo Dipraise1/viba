@@ -4,7 +4,7 @@ import { Session, User } from '@supabase/supabase-js';
 import * as WebBrowser from 'expo-web-browser';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Linking from 'expo-linking';
-import { supabase } from '@/lib/supabase';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 interface AuthState {
   session: Session | null;
@@ -31,6 +31,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setLoading(false);
+      return;
+    }
+
     // Load existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -46,6 +51,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithGoogle = async () => {
+    if (!isSupabaseConfigured) throw new Error('Authentication is not configured.');
+
     const redirectUri = Linking.createURL('auth/callback');
 
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -85,6 +92,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithApple = async () => {
+    if (!isSupabaseConfigured) throw new Error('Authentication is not configured.');
+
     const credential = await AppleAuthentication.signInAsync({
       requestedScopes: [
         AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
@@ -108,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     setIsDemoMode(false);
+    if (!isSupabaseConfigured) return;
     await supabase.auth.signOut();
   };
 
