@@ -26,6 +26,7 @@
         "backgroundColor": "#0A0A12"
       },
       "package": "com.viba.app",
+      "versionCode": 2,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
