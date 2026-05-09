@@ -184,7 +184,7 @@ export default function UserProfileScreen() {
 
       // Fetch stats, platforms, follow state, and posts in parallel
       const [platResult, followResult, statsResult, postsResult] = await Promise.all([
-        supabase.from('connected_platforms').select('platform, username').eq('user_id', resolved.id),
+        supabase.from('platform_connections').select('platform, username').eq('user_id', resolved.id).eq('status', 'active'),
         me ? checkIsFollowing(me.id, resolved.id) : Promise.resolve(false),
         supabase.from('user_stats').select('*').eq('user_id', resolved.id).maybeSingle(),
         supabase.from('posts').select('id, thumbnail_url').eq('user_id', resolved.id).eq('status', 'published').order('created_at', { ascending: false }).limit(12),

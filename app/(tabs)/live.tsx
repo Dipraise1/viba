@@ -16,6 +16,7 @@ import {
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import LivestreamView, { ApiVideoLiveStreamMethods } from '@api.video/react-native-livestream';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   useSharedValue,
@@ -722,8 +723,6 @@ function LiveScreen({
 
   return (
     <View style={StyleSheet.absoluteFill}>
-        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} mode="video" videoQuality="2160p" />
-
         {/* Top gradient */}
         <LinearGradient colors={['rgba(0,0,0,0.7)', 'transparent']} style={liveStyles.topGrad} pointerEvents="none" />
         {/* Bottom gradient */}
@@ -1330,11 +1329,30 @@ const bigAlertStyles = StyleSheet.create({
 export default function GoLiveTab() {
   const insets = useSafeAreaInsets();
   const { colors: C } = useTheme();
-  const { platforms, streamSettings, tokenBalance, addTokens, addNotification, restreamToken, syncTokenBalance } = useApp();
+  const { platforms, streamSettings, tokenBalance, addTokens, addNotification, restreamToken, restreamKey, platformStreamKeys, syncTokenBalance } = useApp();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
 
   const cameraRef = useRef<CameraView>(null);
+  const livestreamRef = useRef<LivestreamView>(null);
+
+  const RTMP_BASES: Record<string, string> = {
+    youtube:  'rtmp://a.rtmp.youtube.com/live2',
+    twitch:   'rtmps://live.twitch.tv/app',
+    facebook: 'rtmps://live-api-s.facebook.com:443/rtmp',
+  };
+
+  const getRtmpDestination = (): { streamKey: string; url: string } | null => {
+    // Priority 1: Restream (fans out to all selected platforms)
+    if (restreamKey) return { streamKey: restreamKey, url: 'rtmp://live.restream.io/live' };
+    // Priority 2: Direct platform with stream key
+    for (const id of Array.from(selectedIds)) {
+      const key = platformStreamKeys[id];
+      const base = RTMP_BASES[id];
+      if (key && base) return { streamKey: key, url: base };
+    }
+    return null;
+  };
 
   const chatClientRef = useRef<RestreamChatClient | null>(null);
   const viewerPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1354,15 +1372,15 @@ export default function GoLiveTab() {
   const milestonesFiredRef = useRef<Set<number>>(new Set());
   const [bigGiftAlert, setBigGiftAlert] = useState<{ emoji: string; name: string; sender: string; tokens: number } | null>(null);
 
-  useEffect(() => {
-    if (status === 'starting') {
-      const t = setTimeout(() => {
-        setStatus('live');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }, 1500);
-      return () => clearTimeout(t);
-    }
-  }, [status]);
+  const handleStreamConnected = () => {
+    setStatus('live');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const handleStreamFailed = (code: string) => {
+    Alert.alert('Stream failed to connect', code ?? 'Check your internet connection and try again.');
+    setStatus('setup');
+  };
 
   // Sync selected when connected changes
   useEffect(() => {
@@ -1521,12 +1539,21 @@ export default function GoLiveTab() {
     peakViewersRef.current = 0;
     milestonesFiredRef.current = new Set();
 
+    const dest = getRtmpDestination();
+    if (!dest) {
+      Alert.alert(
+        'No stream key found',
+        'Connect a platform with a stream key (YouTube, Twitch, or Restream) to go live.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     try {
-      // 1. Create DB session
       const id = await startStreamSession(streamTitle, Array.from(selectedIds));
       sessionIdRef.current = id;
-
       setStatus('starting');
+      await livestreamRef.current?.startStreaming(dest.streamKey, dest.url);
     } catch (e: any) {
       setStatus('setup');
       Alert.alert('Failed to go live', e?.message ?? 'Something went wrong. Please try again.');
@@ -1535,6 +1562,9 @@ export default function GoLiveTab() {
 
   const handleEndStream = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+
+    // Stop RTMP broadcast
+    livestreamRef.current?.stopStreaming();
 
     // Disconnect chat
     chatClientRef.current?.disconnect();
@@ -1587,11 +1617,18 @@ export default function GoLiveTab() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
-      {status === 'starting' && (
-        <CameraView
-          ref={cameraRef}
+      {/* LivestreamView — mounts on 'starting', stays through 'live', handles real RTMP push */}
+      {(status === 'starting' || status === 'live') && (
+        <LivestreamView
+          ref={livestreamRef}
           style={StyleSheet.absoluteFill}
-          facing={facing}
+          camera={facing}
+          isMuted={!micEnabled}
+          video={{ fps: 30, resolution: '720p', bitrate: 2000000 }}
+          audio={{ bitrate: 128000, sampleRate: 44100, isStereo: true }}
+          onConnectionSuccess={handleStreamConnected}
+          onConnectionFailed={handleStreamFailed}
+          onDisconnect={() => console.log('[Viba] Stream disconnected')}
         />
       )}
 

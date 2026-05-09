@@ -76,7 +76,11 @@ function CreatorResult({ creator, index, C }: { creator: Creator; index: number;
 
   return (
     <Animated.View entering={FadeInDown.delay(index * 40).duration(320)}>
-      <TouchableOpacity style={resS.row} activeOpacity={0.75}>
+      <TouchableOpacity
+        style={resS.row}
+        activeOpacity={0.75}
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(`/user/${creator.id}` as any); }}
+      >
         <View style={resS.avatarWrap}>
           <LinearGradient colors={grad} style={resS.avatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
             <Text style={resS.avatarText}>{initials(creator.display_name || creator.handle)}</Text>
@@ -175,7 +179,16 @@ export default function SearchScreen() {
     );
   }, [allCreators]);
 
-  const displayCreators = query.trim() ? results : allCreators;
+  const topicFiltered = activeTopic
+    ? allCreators.filter((c) => {
+        const combined = `${c.handle} ${c.display_name}`.toLowerCase();
+        if (combined.includes(activeTopic)) return true;
+        const hash = c.id.charCodeAt(0) + (c.id.charCodeAt(c.id.length - 1) || 0);
+        return hash % TOPICS.length === TOPICS.findIndex((t) => t.id === activeTopic);
+      })
+    : allCreators;
+
+  const displayCreators = query.trim() ? results : topicFiltered;
 
   return (
     <View style={styles.container}>
