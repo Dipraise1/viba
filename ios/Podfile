@@ -59,5 +59,14 @@ target 'Viba' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+
+    # HaishinKit 1.9.3 is not Swift 6 compatible — force Swift 5 mode so it compiles
+    installer.pods_project.targets.each do |target|
+      if target.name == 'HaishinKit'
+        target.build_configurations.each do |build_config|
+          build_config.build_settings['SWIFT_VERSION'] = '5.0'
+        end
+      end
+    end
   end
 end
