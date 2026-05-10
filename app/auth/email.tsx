@@ -22,6 +22,12 @@ import { supabase } from '@/lib/supabase';
 
 type Mode = 'signin' | 'signup';
 
+function nameFromEmail(email: string): string {
+  const local = email.split('@')[0] ?? '';
+  const parts = local.split(/[._+\-]/).filter(Boolean).map((p) => p.replace(/\d+$/, '')).filter(Boolean);
+  return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ') || local;
+}
+
 export default function EmailAuthScreen() {
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<Mode>('signin');
@@ -38,10 +44,7 @@ export default function EmailAuthScreen() {
       Alert.alert('Missing fields', 'Please enter your email and password.');
       return;
     }
-    if (isSignUp && !name.trim()) {
-      Alert.alert('Missing name', 'Please enter your display name.');
-      return;
-    }
+    // name is optional — derive from email if blank
     if (password.length < 6) {
       Alert.alert('Weak password', 'Password must be at least 6 characters.');
       return;
@@ -52,11 +55,12 @@ export default function EmailAuthScreen() {
 
     try {
       if (isSignUp) {
+        const displayName = name.trim() || nameFromEmail(email.trim());
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
           options: {
-            data: { full_name: name.trim() },
+            data: { full_name: displayName },
           },
         });
         if (error) throw error;
@@ -127,14 +131,14 @@ export default function EmailAuthScreen() {
         <Animated.View entering={FadeInDown.delay(160).duration(400)} style={styles.form}>
           {isSignUp && (
             <View style={styles.fieldWrap}>
-              <Text style={styles.label}>Display name</Text>
+              <Text style={styles.label}>Display name (optional)</Text>
               <View style={styles.inputRow}>
                 <Ionicons name="person-outline" size={16} color={Colors.textMuted} />
                 <TextInput
                   style={styles.input}
                   value={name}
                   onChangeText={setName}
-                  placeholder="Your name"
+                  placeholder="Auto-generated from email"
                   placeholderTextColor={Colors.textMuted}
                   autoCapitalize="words"
                   returnKeyType="next"

@@ -14,6 +14,7 @@ import {
   ScrollView,
   ViewToken,
   GestureResponderEvent,
+  useWindowDimensions,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -40,8 +41,9 @@ import { useAuth } from '@/context/AuthContext';
 import { useApp } from '@/context/AppContext';
 import { getPlatform } from '@/constants/platforms';
 import { trackEngagement } from '@/lib/feed';
+import { GIFT_CATALOG, sendGift, type GiftItem } from '@/lib/gifts';
 
-const { width: W, height: SCREEN_H } = Dimensions.get('window');
+const { width: W, height: SCREEN_H } = Dimensions.get('screen');
 
 interface Creator {
   id: string;
@@ -75,18 +77,18 @@ const ACCENT_COLORS = [
 // ─── Real video source pool ───────────────────────────────────────────────────
 
 const VIDEO_SOURCES = [
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Subaru_Outback_On_Street_And_Trails.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/VolkswagenGTIReview.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WhatCarCanYouGetForAGrand.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+  'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4',
+  'https://test-videos.co.uk/vids/jellyfish/mp4/h264/360/Jellyfish_360_10s_1MB.mp4',
+  'https://test-videos.co.uk/vids/sintel/mp4/h264/360/Sintel_360_10s_1MB.mp4',
+  'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_5MB.mp4',
+  'https://test-videos.co.uk/vids/jellyfish/mp4/h264/720/Jellyfish_720_10s_5MB.mp4',
+  'https://test-videos.co.uk/vids/sintel/mp4/h264/720/Sintel_720_10s_5MB.mp4',
+  'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_20MB.mp4',
+  'https://test-videos.co.uk/vids/jellyfish/mp4/h264/1080/Jellyfish_1080_10s_20MB.mp4',
+  'https://test-videos.co.uk/vids/sintel/mp4/h264/1080/Sintel_1080_10s_20MB.mp4',
+  'https://www.learningcontainer.com/wp-content/uploads/2020/05/sample-mp4-file.mp4',
+  'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_5MB.mp4',
+  'https://www.w3schools.com/html/mov_bbb.mp4',
 ];
 
 function getVideoUri(seed: string): string {
@@ -454,19 +456,154 @@ const shrS = StyleSheet.create({
   actionLabel: { fontFamily: 'DMSans-Medium', fontSize: 14 },
 });
 
+// ─── Gift sheet ───────────────────────────────────────────────────────────────
+
+const GIFT_GRADS: Record<string, [string, string]> = {
+  heart:   ['#FF2D87', '#FF6B9D'],
+  rose:    ['#FF6B6B', '#FF2D87'],
+  star:    ['#FFD700', '#FF9500'],
+  fire:    ['#FF6B35', '#FF2D87'],
+  diamond: ['#00D4FF', '#7B2FFF'],
+  crown:   ['#FFD700', '#FF6B35'],
+  rocket:  ['#7B2FFF', '#FF2D87'],
+  galaxy:  ['#0094FF', '#7B2FFF'],
+};
+
+function GiftSheet({ visible, onClose, recipientId, recipientName, C, insets }: {
+  visible: boolean;
+  onClose: () => void;
+  recipientId: string;
+  recipientName: string;
+  C: AppColors;
+  insets: { bottom: number };
+}) {
+  const { tokenBalance, spendTokens } = useApp();
+  const [sending, setSending] = useState<string | null>(null);
+  const [lastSent, setLastSent] = useState<string | null>(null);
+
+  const handleGift = async (gift: GiftItem) => {
+    if (tokenBalance < gift.costTokens) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+    setSending(gift.id);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    const ok = await sendGift({
+      streamSessionId: null,
+      recipientId,
+      giftId: gift.id,
+      quantity: 1,
+      spendTokensFn: spendTokens,
+    });
+    setSending(null);
+    if (ok) {
+      setLastSent(gift.id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTimeout(() => { setLastSent(null); onClose(); }, 900);
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity style={gftS.backdrop} activeOpacity={1} onPress={onClose} />
+      <Animated.View entering={FadeInUp.duration(280).springify()} style={[gftS.sheet, { backgroundColor: C.bgDeep, borderColor: C.border, paddingBottom: insets.bottom + 16 }]}>
+        <View style={[gftS.handle, { backgroundColor: C.border }]} />
+
+        {/* Header */}
+        <View style={gftS.header}>
+          <View>
+            <Text style={[gftS.title, { color: C.textPrimary }]}>Send a gift</Text>
+            <Text style={[gftS.sub, { color: C.textMuted }]}>to {recipientName}</Text>
+          </View>
+          <View style={[gftS.balancePill, { backgroundColor: C.bgCard, borderColor: C.border }]}>
+            <Text style={gftS.balanceEmoji}>💎</Text>
+            <Text style={[gftS.balanceText, { color: C.textPrimary }]}>{tokenBalance.toLocaleString()}</Text>
+            <Text style={[gftS.balanceLabel, { color: C.textMuted }]}>tokens</Text>
+          </View>
+        </View>
+
+        {/* Gift grid */}
+        <View style={gftS.grid}>
+          {GIFT_CATALOG.map((gift) => {
+            const grad = GIFT_GRADS[gift.id] ?? ['#FF2D87', '#7B2FFF'];
+            const canAfford = tokenBalance >= gift.costTokens;
+            const isSending = sending === gift.id;
+            const justSent = lastSent === gift.id;
+            return (
+              <TouchableOpacity
+                key={gift.id}
+                style={[gftS.giftCard, { backgroundColor: C.bgCard, borderColor: justSent ? grad[0] : C.border, opacity: canAfford ? 1 : 0.45 }]}
+                activeOpacity={canAfford ? 0.75 : 1}
+                onPress={() => canAfford && handleGift(gift)}
+              >
+                {justSent && (
+                  <LinearGradient colors={[grad[0] + '30', grad[1] + '10']} style={StyleSheet.absoluteFill} />
+                )}
+                <Text style={gftS.giftEmoji}>{gift.emoji}</Text>
+                <Text style={[gftS.giftName, { color: C.textSecondary }]}>{gift.name}</Text>
+                <View style={[gftS.costRow, { backgroundColor: grad[0] + '22' }]}>
+                  {isSending ? (
+                    <ActivityIndicator size="small" color={grad[0]} />
+                  ) : (
+                    <Text style={[gftS.costText, { color: grad[0] }]}>
+                      {justSent ? '✓ Sent!' : `${gift.costTokens} 💎`}
+                    </Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity style={gftS.getMore} activeOpacity={0.8} onPress={() => { onClose(); router.push('/viba-balance' as any); }}>
+          <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={gftS.getMoreGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+            <Text style={gftS.getMoreText}>Get more tokens</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
+    </Modal>
+  );
+}
+
+const gftS = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
+  sheet: { borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1 },
+  handle: { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 },
+  title: { fontFamily: 'Syne-Bold', fontSize: 17 },
+  sub: { fontFamily: 'DMSans-Regular', fontSize: 13, marginTop: 2 },
+  balancePill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 7 },
+  balanceEmoji: { fontSize: 14 },
+  balanceText: { fontFamily: 'DMSans-Bold', fontSize: 14 },
+  balanceLabel: { fontFamily: 'DMSans-Regular', fontSize: 12 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, gap: 10, justifyContent: 'center' },
+  giftCard: { width: (W - 64) / 4, alignItems: 'center', gap: 6, paddingVertical: 12, borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  giftEmoji: { fontSize: 28 },
+  giftName: { fontFamily: 'DMSans-Medium', fontSize: 11 },
+  costRow: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, minHeight: 22, alignItems: 'center', justifyContent: 'center' },
+  costText: { fontFamily: 'DMSans-Bold', fontSize: 10 },
+  getMore: { marginHorizontal: 20, marginTop: 16, borderRadius: 14, overflow: 'hidden' },
+  getMoreGrad: { paddingVertical: 13, alignItems: 'center', borderRadius: 14 },
+  getMoreText: { fontFamily: 'DMSans-Bold', fontSize: 14, color: '#FFFFFF' },
+});
+
 // ─── Single video item ────────────────────────────────────────────────────────
 
 function VideoCard({
-  item, isVisible, C, insets, onCommentPress, onSharePress,
+  item, isVisible, C, insets, onCommentPress, onSharePress, onGiftPress,
 }: {
   item: VideoItem; isVisible: boolean; C: AppColors;
   insets: { top: number; bottom: number };
   onCommentPress: () => void;
   onSharePress: () => void;
+  onGiftPress: () => void;
 }) {
   const [liked, setLiked] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
   const [following, setFollowing] = useState(false);
+  const [giftBurst, setGiftBurst] = useState<string | null>(null);
+  const giftBurstOpacity = useSharedValue(0);
+  const giftBurstY = useSharedValue(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -480,9 +617,9 @@ function VideoCard({
 
   const videoUri = getVideoUri(item.imgSeed || item.id);
 
-  const player = useVideoPlayer({ uri: videoUri }, (p) => {
+  const player = useVideoPlayer(videoUri, (p) => {
     p.loop = true;
-    p.muted = true;
+    p.muted = false;
   });
 
   useEffect(() => {
@@ -491,14 +628,14 @@ function VideoCard({
       player.play();
     } else {
       player.pause();
-      if (!isVisible && progressRef.current > 0) {
+      if (progressRef.current > 0) {
         const watchPct = Math.min(100, Math.round(progressRef.current * 100));
         trackEngagement(item.id, watchPct < 10 ? 'skip' : 'view', watchPct);
       }
       setProgress(0);
       progressRef.current = 0;
     }
-  }, [isVisible]);
+  }, [isVisible, player]);
 
   useEffect(() => {
     const timeSub = player.addListener('timeUpdate', (payload: any) => {
@@ -524,6 +661,22 @@ function VideoCard({
     opacity: heartOpacity.value,
     transform: [{ scale: heartScale.value }],
   }));
+  const giftBurstStyle = useAnimatedStyle(() => ({
+    opacity: giftBurstOpacity.value,
+    transform: [{ translateY: giftBurstY.value }],
+  }));
+
+  const triggerGiftBurst = (emoji: string) => {
+    setGiftBurst(emoji);
+    giftBurstY.value = 0;
+    giftBurstOpacity.value = 1;
+    giftBurstY.value = withTiming(-120, { duration: 900 });
+    giftBurstOpacity.value = withSequence(
+      withTiming(1, { duration: 50 }),
+      withDelay(500, withTiming(0, { duration: 350 })),
+    );
+    setTimeout(() => setGiftBurst(null), 1000);
+  };
 
   const triggerHeartBurst = () => {
     heartScale.value = 0.2;
@@ -650,6 +803,21 @@ function VideoCard({
           <Text style={vidS.actionCount}>{fmtNum(item.comments)}</Text>
         </TouchableOpacity>
 
+        {/* Gift button */}
+        {!item.isViba && (
+          <TouchableOpacity
+            style={vidS.actionBtn}
+            activeOpacity={0.7}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onGiftPress(); }}
+          >
+            <View style={vidS.giftBtn}>
+              <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+              <Text style={vidS.giftBtnEmoji}>💎</Text>
+            </View>
+            <Text style={vidS.actionCount}>Gift</Text>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity style={vidS.actionBtn} activeOpacity={0.7} onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           trackEngagement(item.id, 'share', Math.round(progressRef.current * 100));
@@ -718,6 +886,13 @@ function VideoCard({
       <View style={vidS.progressTrack} pointerEvents="none">
         <View style={[vidS.progressFill, { width: `${(progress * 100).toFixed(1)}%` as any }]} />
       </View>
+
+      {/* Floating gift burst */}
+      {giftBurst && (
+        <Animated.View style={[vidS.giftBurst, giftBurstStyle]} pointerEvents="none">
+          <Text style={vidS.giftBurstEmoji}>{giftBurst}</Text>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -746,6 +921,10 @@ const vidS = StyleSheet.create({
   musicText: { fontFamily: 'DMSans-Medium', fontSize: 12, color: 'rgba(255,255,255,0.85)', flex: 1 },
   progressTrack: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: 'rgba(255,255,255,0.15)' },
   progressFill: { height: '100%', backgroundColor: '#FF2D87', borderRadius: 2 },
+  giftBtn: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  giftBtnEmoji: { fontSize: 18 },
+  giftBurst: { position: 'absolute', bottom: '30%', alignSelf: 'center', alignItems: 'center' },
+  giftBurstEmoji: { fontSize: 64 },
 });
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
@@ -761,6 +940,7 @@ export default function HomeScreen() {
   const [visibleIndex, setVisibleIndex] = useState(0);
   const [commentsItem, setCommentsItem] = useState<VideoItem | null>(null);
   const [shareVisible, setShareVisible] = useState(false);
+  const [giftItem, setGiftItem] = useState<VideoItem | null>(null);
 
   const load = useCallback(async () => {
     // 1. Try ranked feed from algorithm
@@ -861,8 +1041,9 @@ export default function HomeScreen() {
       insets={insets}
       onCommentPress={() => { setCommentsItem(item); trackEngagement(item.id, 'comment'); }}
       onSharePress={() => setShareVisible(true)}
+      onGiftPress={() => setGiftItem(item)}
     />
-  ), [visibleIndex, C, insets]);
+  ), [visibleIndex, C, insets, setCommentsItem, setShareVisible, setGiftItem]);
 
   const keyExtractor = useCallback((item: VideoItem) => item.id, []);
   const getItemLayout = useCallback((_: any, index: number) => ({ length: SCREEN_H, offset: SCREEN_H * index, index }), []);
@@ -930,12 +1111,22 @@ export default function HomeScreen() {
         C={C}
         insets={insets}
       />
+
+      {/* Gift sheet */}
+      <GiftSheet
+        visible={!!giftItem}
+        onClose={() => setGiftItem(null)}
+        recipientId={giftItem?.creator.id ?? ''}
+        recipientName={giftItem?.creator.display_name || giftItem?.creator.handle || ''}
+        C={C}
+        insets={insets}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  container: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' },
   header: {
     position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
     flexDirection: 'row', alignItems: 'center',
