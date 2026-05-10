@@ -338,7 +338,8 @@ export default function LoginScreen() {
             </AuthButton>
 
             <TouchableOpacity onPress={handleDemo} activeOpacity={0.7} style={styles.demoBtn}>
-              <Text style={styles.demoText}>Try Demo — no account needed</Text>
+              <Ionicons name="arrow-forward-circle-outline" size={18} color={Colors.textMuted} />
+              <Text style={styles.demoText}>Continue without account</Text>
             </TouchableOpacity>
           </Animated.View>
 
@@ -460,13 +461,16 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
     borderWidth: 1,
     borderColor: Colors.border,
+    backgroundColor: 'transparent',
   },
   demoText: {
-    fontFamily: 'DMSans-Medium',
+    fontFamily: 'DMSans-SemiBold',
     fontSize: 15,
-    color: Colors.textSecondary,
+    color: Colors.textMuted,
   },
 });
 
