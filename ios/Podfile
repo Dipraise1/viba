@@ -68,5 +68,60 @@ target 'Viba' do
         end
       end
     end
+
+    # HaishinKit 1.9.3 triggers an internal Swift compiler crash (Xcode 16+) when stored
+    # AudioComponentDescription properties are passed as inout to super.init before initialization
+    # completes. Fix: move the component descriptions to local variables inside each init.
+    audio_node_path = File.join(installer.sandbox.root, 'HaishinKit/Sources/IO/AudioNode.swift')
+    if File.exist?(audio_node_path)
+      content = File.read(audio_node_path)
+      patched = content
+        .gsub(
+          "    private var mixerComponentDescription = AudioComponentDescription(\n" \
+          "        componentType: kAudioUnitType_Mixer,\n" \
+          "        componentSubType: kAudioUnitSubType_MultiChannelMixer,\n" \
+          "        componentManufacturer: kAudioUnitManufacturer_Apple,\n" \
+          "        componentFlags: 0,\n" \
+          "        componentFlagsMask: 0)\n\n" \
+          "    init(format: AVAudioFormat) throws {\n" \
+          "        try super.init(description: &mixerComponentDescription)\n" \
+          "    }",
+          "    init(format: AVAudioFormat) throws {\n" \
+          "        var desc = AudioComponentDescription(\n" \
+          "            componentType: kAudioUnitType_Mixer,\n" \
+          "            componentSubType: kAudioUnitSubType_MultiChannelMixer,\n" \
+          "            componentManufacturer: kAudioUnitManufacturer_Apple,\n" \
+          "            componentFlags: 0,\n" \
+          "            componentFlagsMask: 0)\n" \
+          "        try super.init(description: &desc)\n" \
+          "    }"
+        )
+        .gsub(
+          "    private var outputComponentDescription = AudioComponentDescription(\n" \
+          "        componentType: kAudioUnitType_Output,\n" \
+          "        componentSubType: kAudioUnitSubType_GenericOutput,\n" \
+          "        componentManufacturer: kAudioUnitManufacturer_Apple,\n" \
+          "        componentFlags: 0,\n" \
+          "        componentFlagsMask: 0)\n\n" \
+          "    var format: AVAudioFormat {\n",
+          "    var format: AVAudioFormat {\n"
+        )
+        .gsub(
+          "        self.buffer = buffer\n" \
+          "        try super.init(description: &outputComponentDescription)\n",
+          "        self.buffer = buffer\n" \
+          "        var desc = AudioComponentDescription(\n" \
+          "            componentType: kAudioUnitType_Output,\n" \
+          "            componentSubType: kAudioUnitSubType_GenericOutput,\n" \
+          "            componentManufacturer: kAudioUnitManufacturer_Apple,\n" \
+          "            componentFlags: 0,\n" \
+          "            componentFlagsMask: 0)\n" \
+          "        try super.init(description: &desc)\n"
+        )
+      if patched != content
+        File.write(audio_node_path, patched)
+        puts '[Patch] Fixed HaishinKit AudioNode.swift Swift compiler crash (Xcode 16+)'
+      end
+    end
   end
 end
