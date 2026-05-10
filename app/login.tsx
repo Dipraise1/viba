@@ -468,7 +468,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   demoText: {
-    fontFamily: 'DMSans-SemiBold',
+    fontFamily: 'DMSans-Medium',
     fontSize: 15,
     color: Colors.textMuted,
   },
