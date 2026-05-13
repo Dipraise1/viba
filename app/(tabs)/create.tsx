@@ -38,6 +38,7 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { publishPost } from '@/lib/feed';
 
 const { width } = Dimensions.get('window');
 
@@ -158,6 +159,8 @@ export default function CreateScreen() {
   const [isLaunching, setIsLaunching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [isPosting, setIsPosting] = useState(false);
+  const [posted, setPosted] = useState(false);
 
   const cameraReady = cameraPermission?.granted;
 
@@ -168,6 +171,32 @@ export default function CreateScreen() {
     setVolume(1);
     setCoverUri(null);
     setSaved(false);
+    setPosted(false);
+  };
+
+  const handlePost = async () => {
+    if (!draft || isPosting) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    setIsPosting(true);
+    try {
+      await publishPost({
+        videoUri:     draft.uri,
+        thumbnailUri: coverUri,
+        caption:      caption.trim(),
+        durationMs:   draft.durationMs ?? null,
+        tags:         [],
+      });
+      setPosted(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTimeout(() => {
+        setDraft(null);
+        router.replace('/(tabs)');
+      }, 1400);
+    } catch (e: any) {
+      Alert.alert('Post failed', e?.message ?? 'Could not upload your video. Try again.');
+    } finally {
+      setIsPosting(false);
+    }
   };
 
   const openDraft = async (asset: ImagePicker.ImagePickerAsset, source: DraftSource) => {
@@ -319,6 +348,9 @@ export default function CreateScreen() {
         onSaveToLibrary={handleSaveToLibrary}
         isSaving={isSaving}
         saved={saved}
+        onPost={handlePost}
+        isPosting={isPosting}
+        posted={posted}
         insets={insets}
       />
     );
@@ -467,6 +499,9 @@ function VideoEditor({
   onSaveToLibrary,
   isSaving,
   saved,
+  onPost,
+  isPosting,
+  posted,
   insets,
 }: {
   draft: VideoDraft;
@@ -486,6 +521,9 @@ function VideoEditor({
   onSaveToLibrary: () => void;
   isSaving: boolean;
   saved: boolean;
+  onPost: () => Promise<void>;
+  isPosting: boolean;
+  posted: boolean;
   insets: { top: number; bottom: number };
 }) {
   const [playing, setPlaying] = useState(false);
@@ -758,27 +796,42 @@ function VideoEditor({
             <Ionicons name="folder-open-outline" size={18} color="#FFFFFF" />
             <Text style={editorStyles.secondaryActionText}>Upload</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[editorStyles.secondaryAction, saved && editorStyles.secondaryActionSaved]}
+            onPress={onSaveToLibrary}
+            activeOpacity={0.84}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name={saved ? 'checkmark' : 'download-outline'} size={18} color={saved ? '#00D4AA' : '#FFFFFF'} />
+            )}
+            <Text style={[editorStyles.secondaryActionText, saved && { color: '#00D4AA' }]}>
+              {saved ? 'Saved' : 'Save'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity
           style={editorStyles.saveAction}
-          onPress={onSaveToLibrary}
+          onPress={onPost}
           activeOpacity={0.88}
-          disabled={isSaving}
+          disabled={isPosting || posted}
         >
           <LinearGradient
-            colors={saved ? ['#00D4AA', '#00A884'] : ['#FF2D87', '#7B2FFF']}
+            colors={posted ? ['#00D4AA', '#00A884'] : ['#FF2D87', '#7B2FFF']}
             style={editorStyles.saveActionGrad}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
           >
-            {isSaving ? (
+            {isPosting ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Ionicons name={saved ? 'checkmark-circle' : 'download-outline'} size={20} color="#FFFFFF" />
+              <Ionicons name={posted ? 'checkmark-circle' : 'paper-plane-outline'} size={20} color="#FFFFFF" />
             )}
             <Text style={editorStyles.saveActionText}>
-              {saved ? 'Saved to library' : 'Save video'}
+              {posted ? 'Posted!' : isPosting ? 'Uploading...' : 'Post to Viba'}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -1173,6 +1226,7 @@ const editorStyles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
   },
   secondaryActionText: { fontFamily: 'DMSans-Bold', fontSize: 13, color: '#FFFFFF' },
+  secondaryActionSaved: { borderColor: 'rgba(0,212,170,0.3)', backgroundColor: 'rgba(0,212,170,0.1)' },
   saveAction: { borderRadius: 8, overflow: 'hidden' },
   saveActionGrad: {
     minHeight: 52,

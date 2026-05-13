@@ -210,6 +210,60 @@ export async function getFollowerCount(creatorId: string): Promise<number> {
   return count ?? 0;
 }
 
+// ─── Publish a post ──────────────────────────────────────────────────────────
+
+export async function publishPost(params: {
+  videoUri: string;
+  thumbnailUri: string | null;
+  caption: string;
+  durationMs: number | null;
+  tags?: string[];
+}): Promise<string> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('You must be signed in to post.');
+
+  const fileSuffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const ext = params.videoUri.split('?')[0].split('.').pop()?.toLowerCase() ?? 'mp4';
+  const videoPath = `${user.id}/posts/${fileSuffix}.${ext}`;
+
+  const videoBlob = await fetch(params.videoUri).then((r) => r.blob());
+  const { error: videoError } = await supabase.storage
+    .from('videos')
+    .upload(videoPath, videoBlob, { upsert: false, contentType: `video/${ext}` });
+  if (videoError) throw videoError;
+
+  const { data: { publicUrl: mediaUrl } } = supabase.storage.from('videos').getPublicUrl(videoPath);
+
+  let thumbnailUrl: string | null = null;
+  if (params.thumbnailUri) {
+    const thumbPath = `${user.id}/posts/${fileSuffix}_thumb.jpg`;
+    const thumbBlob = await fetch(params.thumbnailUri).then((r) => r.blob());
+    const { error: thumbError } = await supabase.storage
+      .from('videos')
+      .upload(thumbPath, thumbBlob, { upsert: false, contentType: 'image/jpeg' });
+    if (!thumbError) {
+      thumbnailUrl = supabase.storage.from('videos').getPublicUrl(thumbPath).data.publicUrl;
+    }
+  }
+
+  const { data, error: insertError } = await supabase
+    .from('posts')
+    .insert({
+      user_id:       user.id,
+      caption:       params.caption || null,
+      media_url:     mediaUrl,
+      thumbnail_url: thumbnailUrl,
+      duration_secs: params.durationMs ? Math.round(params.durationMs / 1000) : null,
+      tags:          params.tags ?? [],
+      status:        'published',
+    })
+    .select('id')
+    .single();
+
+  if (insertError) throw insertError;
+  return (data as { id: string }).id;
+}
+
 // ─── Trending creators ────────────────────────────────────────────────────────
 
 export async function getTrendingCreators(
