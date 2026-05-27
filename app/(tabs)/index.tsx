@@ -42,8 +42,80 @@ import { useApp } from '@/context/AppContext';
 import { getPlatform } from '@/constants/platforms';
 import { trackEngagement } from '@/lib/feed';
 import { GIFT_CATALOG, sendGift, type GiftItem } from '@/lib/gifts';
+import {
+  getThreadFeed,
+  postThread as dbPostThread,
+  postThreadReply as dbPostReply,
+  toggleThreadLike,
+  toggleThreadRepost,
+  toggleThreadBookmark,
+  type Thread as DbThread,
+} from '@/lib/threads';
 
 const { width: W, height: SCREEN_H } = Dimensions.get('screen');
+
+// ─── Thread types ──────────────────────────────────────────────────────────────
+
+interface ThreadReply {
+  id: string;
+  user: string;
+  handle: string;
+  text: string;
+  time: string;
+  likes: number;
+  gradSeed: number;
+  liked?: boolean;
+}
+
+interface ThreadPost {
+  id: string;
+  threadId?: string; // real DB id for interactions
+  user: string;
+  handle: string;
+  text: string;
+  time: string;
+  likes: number;
+  comments: number;
+  reposts: number;
+  gradSeed: number;
+  liked?: boolean;
+  reposted?: boolean;
+  bookmarked?: boolean;
+  hasReply?: boolean;
+  replies?: ThreadReply[];
+  tags?: string[];
+  media?: string | null;
+}
+
+function relativeTime(iso: string): string {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60)   return `${Math.floor(diff)}s`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  return `${Math.floor(diff / 86400)}d`;
+}
+
+function dbThreadToPost(t: DbThread, idx: number): ThreadPost {
+  return {
+    id: t.id,
+    threadId: t.id,
+    user: t.display_name,
+    handle: t.handle.startsWith('@') ? t.handle : `@${t.handle}`,
+    text: t.body,
+    time: relativeTime(t.created_at),
+    likes: t.likes,
+    comments: t.replies,
+    reposts: t.reposts,
+    gradSeed: Math.abs((t.user_id.charCodeAt(0) || 0) + idx) % 8,
+    liked: t.liked ?? false,
+    reposted: t.reposted ?? false,
+    bookmarked: t.bookmarked ?? false,
+    tags: t.tags ?? [],
+    hasReply: false,
+    replies: [],
+  };
+}
+
 
 interface Creator {
   id: string;
@@ -60,116 +132,17 @@ interface VideoItem {
   id: string;
   creator: Creator;
   caption: string;
-  song: string;
+  mediaUrl: string | null;
   views: number;
   likes: number;
   comments: number;
-  imgSeed: string;
   accentColor: string;
-  isViba?: boolean;
 }
 
 const ACCENT_COLORS = [
   '#FF2D87', '#7B2FFF', '#00D4AA', '#FF6B35',
   '#3F5EFB', '#f7971e', '#11998e', '#FC466B',
 ];
-
-// ─── Real video source pool ───────────────────────────────────────────────────
-
-const VIDEO_SOURCES = [
-  'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4',
-  'https://test-videos.co.uk/vids/jellyfish/mp4/h264/360/Jellyfish_360_10s_1MB.mp4',
-  'https://test-videos.co.uk/vids/sintel/mp4/h264/360/Sintel_360_10s_1MB.mp4',
-  'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_5MB.mp4',
-  'https://test-videos.co.uk/vids/jellyfish/mp4/h264/720/Jellyfish_720_10s_5MB.mp4',
-  'https://test-videos.co.uk/vids/sintel/mp4/h264/720/Sintel_720_10s_5MB.mp4',
-  'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_20MB.mp4',
-  'https://test-videos.co.uk/vids/jellyfish/mp4/h264/1080/Jellyfish_1080_10s_20MB.mp4',
-  'https://test-videos.co.uk/vids/sintel/mp4/h264/1080/Sintel_1080_10s_20MB.mp4',
-  'https://www.learningcontainer.com/wp-content/uploads/2020/05/sample-mp4-file.mp4',
-  'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_5MB.mp4',
-  'https://www.w3schools.com/html/mov_bbb.mp4',
-];
-
-function getVideoUri(seed: string): string {
-  const s = seed || 'default';
-  const hash = Math.abs(s.split('').reduce((acc, c) => ((acc << 5) - acc) + c.charCodeAt(0), 0));
-  return VIDEO_SOURCES[hash % VIDEO_SOURCES.length];
-}
-
-const POST_CAPTIONS = [
-  'Going live tonight at 8PM — don\'t miss it 🔥',
-  'Thank you for 10K followers!! You guys are everything 💜',
-  'New gaming setup reveal — full stream replay dropping now',
-  'Collab with @vibemaster dropping this Friday!',
-  'Behind the scenes of last night\'s session 🎙️',
-  'Crazy gifting moment from last week 😭❤️',
-  'POV: you just found your new fav creator',
-  'Just dropped the most insane stream highlights',
-  'Stream starting in 5 mins — come hang 👋',
-  'This reaction had me dead 💀 watch till the end',
-  'First time trying this challenge and I actually did it',
-  'y\'all kept asking for a tutorial so here it is 🎯',
-  'Dropped a new beat pack — check the link in bio 🎵',
-  'My chat is so chaotic I love you guys 😂',
-  'Road to 100K — we\'re almost there!!',
-  'Late night session hits different 🌙✨',
-  'Throwback to that legendary gifting war 👑',
-  'Teaching myself this skill in 30 days — day 12 update',
-  'Surprised my whole chat with this one 😤🔥',
-  'nobody tells you how hard streaming actually is',
-];
-
-const POST_SONGS = [
-  'original sound - viba',
-  'Flowers - Miley Cyrus',
-  'Rich Flex - Drake',
-  'Anti-Hero - Taylor Swift',
-  'As It Was - Harry Styles',
-  'About Damn Time - Lizzo',
-  'Unholy - Sam Smith',
-  'Break My Soul - Beyoncé',
-  'Creepin\' - Metro Boomin',
-  'Kill Bill - SZA',
-  'Lift Me Up - Rihanna',
-  'Escapism - RAYE',
-  'Calm Down - Rema',
-  'Cuff It - Beyoncé',
-  'Bad Habit - Steve Lacy',
-];
-
-const DEMO_CREATORS: Creator[] = [
-  { id: 'demo-01', handle: '@zaybeats', display_name: 'Zay Beats', total_viewers: 4200, platforms: ['youtube', 'twitch'], is_live: true, last_streamed_at: null, stream_count: 89 },
-  { id: 'demo-02', handle: '@lunagaming', display_name: 'Luna Gaming', total_viewers: 8700, platforms: ['twitch', 'tiktok'], is_live: true, last_streamed_at: null, stream_count: 134 },
-  { id: 'demo-03', handle: '@nova.vibes', display_name: 'Nova Vibes', total_viewers: 2100, platforms: ['instagram', 'tiktok'], is_live: false, last_streamed_at: null, stream_count: 47 },
-  { id: 'demo-04', handle: '@djkassandra', display_name: 'DJ Kassandra', total_viewers: 6500, platforms: ['youtube', 'twitch', 'tiktok'], is_live: true, last_streamed_at: null, stream_count: 201 },
-  { id: 'demo-05', handle: '@rexfps', display_name: 'Rex FPS', total_viewers: 3300, platforms: ['twitch', 'youtube'], is_live: false, last_streamed_at: null, stream_count: 72 },
-  { id: 'demo-06', handle: '@amara.art', display_name: 'Amara Art', total_viewers: 1800, platforms: ['instagram', 'tiktok'], is_live: false, last_streamed_at: null, stream_count: 38 },
-  { id: 'demo-07', handle: '@thrillseeker', display_name: 'ThrillSeeker', total_viewers: 12400, platforms: ['youtube', 'twitch', 'tiktok', 'instagram'], is_live: true, last_streamed_at: null, stream_count: 310 },
-  { id: 'demo-08', handle: '@mellowtunes', display_name: 'Mellow Tunes', total_viewers: 900, platforms: ['tiktok', 'instagram'], is_live: false, last_streamed_at: null, stream_count: 23 },
-  { id: 'demo-09', handle: '@cyberjace', display_name: 'Cyber Jace', total_viewers: 5100, platforms: ['twitch', 'youtube'], is_live: true, last_streamed_at: null, stream_count: 156 },
-  { id: 'demo-10', handle: '@soleilfit', display_name: 'Soleil Fit', total_viewers: 3700, platforms: ['instagram', 'tiktok', 'youtube'], is_live: false, last_streamed_at: null, stream_count: 66 },
-  { id: 'demo-11', handle: '@krakencast', display_name: 'Kraken Cast', total_viewers: 7800, platforms: ['twitch', 'youtube', 'tiktok'], is_live: true, last_streamed_at: null, stream_count: 228 },
-  { id: 'demo-12', handle: '@pixelrose', display_name: 'Pixel Rose', total_viewers: 2600, platforms: ['instagram', 'tiktok'], is_live: false, last_streamed_at: null, stream_count: 54 },
-  { id: 'demo-13', handle: '@omegastreams', display_name: 'Omega Streams', total_viewers: 9900, platforms: ['twitch', 'youtube'], is_live: true, last_streamed_at: null, stream_count: 187 },
-  { id: 'demo-14', handle: '@velvetvoice', display_name: 'Velvet Voice', total_viewers: 1400, platforms: ['tiktok', 'instagram'], is_live: false, last_streamed_at: null, stream_count: 31 },
-  { id: 'demo-15', handle: '@axisplay', display_name: 'Axis Play', total_viewers: 4800, platforms: ['twitch', 'youtube', 'tiktok'], is_live: true, last_streamed_at: null, stream_count: 112 },
-  { id: 'demo-16', handle: '@mirakle', display_name: 'Mirakle', total_viewers: 6200, platforms: ['instagram', 'tiktok', 'youtube'], is_live: false, last_streamed_at: null, stream_count: 93 },
-  { id: 'demo-17', handle: '@frostbyte', display_name: 'FrostByte', total_viewers: 3100, platforms: ['twitch', 'youtube'], is_live: true, last_streamed_at: null, stream_count: 145 },
-  { id: 'demo-18', handle: '@sunnyd.tv', display_name: 'Sunny D', total_viewers: 2400, platforms: ['tiktok', 'instagram'], is_live: false, last_streamed_at: null, stream_count: 41 },
-];
-
-const DEMO_VIDEOS: VideoItem[] = DEMO_CREATORS.map((c, i) => ({
-  id: `demo-vid-${c.id}`,
-  creator: c,
-  caption: POST_CAPTIONS[(i + 3) % POST_CAPTIONS.length],
-  song: POST_SONGS[(i * 3 + 1) % POST_SONGS.length],
-  views: 800 + (i * 4217) % 52000,
-  likes: 120 + (i * 1031) % 11000,
-  comments: 8 + (i * 317) % 620,
-  imgSeed: `demo-creator-${c.id}-${i}`,
-  accentColor: ACCENT_COLORS[i % ACCENT_COLORS.length],
-}));
 
 function initials(name: string) {
   return name.split(' ').map((w) => w[0] ?? '').join('').toUpperCase().slice(0, 2) || '??';
@@ -615,7 +588,7 @@ function VideoCard({
   const singleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressRef = useRef(0);
 
-  const videoUri = getVideoUri(item.imgSeed || item.id);
+  const videoUri = item.mediaUrl ?? '';
 
   const player = useVideoPlayer(videoUri, (p) => {
     p.loop = true;
@@ -777,7 +750,7 @@ function VideoCard({
         <TouchableOpacity
           style={vidS.avatarWrap}
           activeOpacity={0.85}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); if (!item.isViba) router.push(`/user/${item.creator.id}` as any); else setFollowing((v) => !v); }}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(`/user/${item.creator.id}` as any); }}
         >
           <LinearGradient
             colors={[item.accentColor, item.accentColor + 'AA']}
@@ -803,20 +776,17 @@ function VideoCard({
           <Text style={vidS.actionCount}>{fmtNum(item.comments)}</Text>
         </TouchableOpacity>
 
-        {/* Gift button */}
-        {!item.isViba && (
-          <TouchableOpacity
-            style={vidS.actionBtn}
-            activeOpacity={0.7}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onGiftPress(); }}
-          >
-            <View style={vidS.giftBtn}>
-              <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-              <Text style={vidS.giftBtnEmoji}>💎</Text>
-            </View>
-            <Text style={vidS.actionCount}>Gift</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={vidS.actionBtn}
+          activeOpacity={0.7}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onGiftPress(); }}
+        >
+          <View style={vidS.giftBtn}>
+            <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+            <Text style={vidS.giftBtnEmoji}>💎</Text>
+          </View>
+          <Text style={vidS.actionCount}>Gift</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity style={vidS.actionBtn} activeOpacity={0.7} onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -848,14 +818,11 @@ function VideoCard({
         <TouchableOpacity
           style={vidS.creatorRow}
           activeOpacity={0.75}
-          onPress={() => { if (!item.isViba) router.push(`/user/${item.creator.id}` as any); }}
+          onPress={() => router.push(`/user/${item.creator.id}` as any)}
         >
           <Text style={vidS.creatorName}>
-            {item.isViba ? 'Viba' : (item.creator.display_name || item.creator.handle)}
+            {item.creator.display_name || item.creator.handle}
           </Text>
-          {item.isViba && (
-            <View style={vidS.verifiedBadge}><Ionicons name="checkmark" size={9} color="#FFFFFF" /></View>
-          )}
           {item.creator.is_live && <PulseDot size={6} color="#FF2D87" />}
         </TouchableOpacity>
 
@@ -874,12 +841,9 @@ function VideoCard({
           </View>
         )}
 
-        <Text style={vidS.caption} numberOfLines={2}>{item.caption}</Text>
-
-        <View style={vidS.musicRow}>
-          <Ionicons name="musical-notes" size={12} color="rgba(255,255,255,0.8)" />
-          <Text style={vidS.musicText} numberOfLines={1}>{item.song}</Text>
-        </View>
+        {!!item.caption && (
+          <Text style={vidS.caption} numberOfLines={2}>{item.caption}</Text>
+        )}
       </View>
 
       {/* Progress bar */}
@@ -927,6 +891,421 @@ const vidS = StyleSheet.create({
   giftBurstEmoji: { fontSize: 64 },
 });
 
+// ─── Threads feed ─────────────────────────────────────────────────────────────
+
+const THREAD_GRADS: [string, string][] = [
+  ['#FF2D87','#C020E0'],['#7B2FFF','#3F5EFB'],['#FF6B35','#FF2D87'],['#00D4AA','#0094FF'],
+  ['#f7971e','#ffd200'],['#FC466B','#3F5EFB'],['#11998e','#38ef7d'],['#FFD700','#FF6B35'],
+];
+
+function fmtBig(n: number) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(0)}K`;
+  return String(n);
+}
+
+function ThreadAvatar({ name, gradSeed, size = 40 }: { name: string; gradSeed: number; size?: number }) {
+  const [g1, g2] = THREAD_GRADS[gradSeed % THREAD_GRADS.length];
+  return (
+    <LinearGradient
+      colors={[g1, g2]}
+      style={{ width: size, height: size, borderRadius: size * 0.28, alignItems: 'center', justifyContent: 'center' }}
+      start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+    >
+      <Text style={{ fontFamily: 'Syne-Bold', fontSize: size * 0.35, color: '#FFFFFF' }}>
+        {initials(name)}
+      </Text>
+    </LinearGradient>
+  );
+}
+
+function ThreadCard({ post, C, onReplyPress }: { post: ThreadPost; C: AppColors; onReplyPress: (p: ThreadPost) => void }) {
+  const [liked, setLiked] = useState(!!post.liked);
+  const [likeCount, setLikeCount] = useState(post.likes);
+  const [reposted, setReposted] = useState(!!post.reposted);
+  const [repostCount, setRepostCount] = useState(post.reposts);
+  const [bookmarked, setBookmarked] = useState(!!post.bookmarked);
+  const [expanded, setExpanded] = useState(false);
+  const heartScale = useSharedValue(1);
+  const repostScale = useSharedValue(1);
+
+  const heartStyle = useAnimatedStyle(() => ({ transform: [{ scale: heartScale.value }] }));
+  const repostStyle = useAnimatedStyle(() => ({ transform: [{ scale: repostScale.value }] }));
+
+  const handleLike = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const next = !liked;
+    setLiked(next);
+    setLikeCount((c) => c + (next ? 1 : -1));
+    heartScale.value = withSpring(1.4, { damping: 5 }, () => { heartScale.value = withSpring(1); });
+    if (post.threadId) toggleThreadLike(post.threadId, !next);
+  };
+
+  const handleRepost = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const next = !reposted;
+    setReposted(next);
+    setRepostCount((c) => c + (next ? 1 : -1));
+    repostScale.value = withSpring(1.35, { damping: 5 }, () => { repostScale.value = withSpring(1); });
+    if (post.threadId) toggleThreadRepost(post.threadId, !next);
+  };
+
+  const handleBookmark = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const next = !bookmarked;
+    setBookmarked(next);
+    if (post.threadId) toggleThreadBookmark(post.threadId, !next);
+  };
+
+  return (
+    <Animated.View entering={FadeInDown.duration(320).springify()} style={[thrS.card, { backgroundColor: C.bgCard, borderColor: C.border }]}>
+      {/* Author row */}
+      <View style={thrS.authorRow}>
+        <ThreadAvatar name={post.user} gradSeed={post.gradSeed} size={42} />
+        {post.hasReply && (
+          <View style={[thrS.threadLine, { backgroundColor: C.border }]} />
+        )}
+        <View style={thrS.authorInfo}>
+          <View style={thrS.authorTop}>
+            <Text style={[thrS.authorName, { color: C.textPrimary }]}>{post.user}</Text>
+            <Text style={[thrS.authorHandle, { color: C.textMuted }]}>{post.handle}</Text>
+            <Text style={[thrS.postTime, { color: C.textMuted }]}>· {post.time}</Text>
+          </View>
+          <Text style={[thrS.postText, { color: C.textPrimary }]}>{post.text}</Text>
+          {post.tags && post.tags.length > 0 && (
+            <View style={thrS.tagsRow}>
+              {post.tags.map((tag) => (
+                <TouchableOpacity key={tag} activeOpacity={0.7}>
+                  <Text style={thrS.tag}>{tag}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Actions */}
+          <View style={thrS.actionsRow}>
+            <TouchableOpacity style={thrS.actionItem} activeOpacity={0.7} onPress={handleLike}>
+              <Animated.View style={heartStyle}>
+                <Ionicons name={liked ? 'heart' : 'heart-outline'} size={20} color={liked ? '#FF2D87' : C.textMuted} />
+              </Animated.View>
+              <Text style={[thrS.actionCount, { color: liked ? '#FF2D87' : C.textMuted }]}>
+                {fmtBig(likeCount)}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={thrS.actionItem} activeOpacity={0.7} onPress={() => onReplyPress(post)}>
+              <Ionicons name="chatbubble-outline" size={19} color={C.textMuted} />
+              <Text style={[thrS.actionCount, { color: C.textMuted }]}>{fmtBig(post.comments)}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={thrS.actionItem} activeOpacity={0.7} onPress={handleRepost}>
+              <Animated.View style={repostStyle}>
+                <Ionicons name="repeat-outline" size={21} color={reposted ? '#00D4AA' : C.textMuted} />
+              </Animated.View>
+              <Text style={[thrS.actionCount, { color: reposted ? '#00D4AA' : C.textMuted }]}>
+                {fmtBig(repostCount)}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={thrS.actionItem} activeOpacity={0.7} onPress={handleBookmark}>
+              <Ionicons name={bookmarked ? 'bookmark' : 'bookmark-outline'} size={19} color={bookmarked ? '#7B2FFF' : C.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={thrS.actionItem} activeOpacity={0.7} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+              <Ionicons name="paper-plane-outline" size={19} color={C.textMuted} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
+      {/* Inline replies */}
+      {post.replies && post.replies.length > 0 && (
+        <>
+          {(expanded ? post.replies : post.replies.slice(0, 1)).map((reply, ri) => (
+            <View key={reply.id} style={[thrS.replyRow, ri === 0 && { borderTopColor: C.border, borderTopWidth: 1 }]}>
+              <ThreadAvatar name={reply.user} gradSeed={reply.gradSeed} size={30} />
+              <View style={thrS.replyContent}>
+                <View style={thrS.replyTop}>
+                  <Text style={[thrS.replyName, { color: C.textPrimary }]}>{reply.user}</Text>
+                  <Text style={[thrS.replyHandle, { color: C.textMuted }]}>{reply.handle} · {reply.time}</Text>
+                </View>
+                <Text style={[thrS.replyText, { color: C.textSecondary }]}>{reply.text}</Text>
+                <View style={thrS.replyActions}>
+                  <TouchableOpacity style={thrS.replyActionItem} activeOpacity={0.7} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
+                    <Ionicons name="heart-outline" size={15} color={C.textMuted} />
+                    <Text style={[thrS.replyLikeCount, { color: C.textMuted }]}>{fmtBig(reply.likes)}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={thrS.replyActionItem} activeOpacity={0.7} onPress={() => onReplyPress(post)}>
+                    <Ionicons name="chatbubble-outline" size={14} color={C.textMuted} />
+                    <Text style={[thrS.replyLikeCount, { color: C.textMuted }]}>Reply</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          ))}
+          {post.replies.length > 1 && (
+            <TouchableOpacity
+              style={[thrS.expandBtn, { borderTopColor: C.border }]}
+              activeOpacity={0.7}
+              onPress={() => { Haptics.selectionAsync(); setExpanded((v) => !v); }}
+            >
+              <Text style={[thrS.expandText, { color: C.textMuted }]}>
+                {expanded ? 'Show less' : `${post.replies.length - 1} more repl${post.replies.length - 1 === 1 ? 'y' : 'ies'}`}
+              </Text>
+              <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={C.textMuted} />
+            </TouchableOpacity>
+          )}
+        </>
+      )}
+    </Animated.View>
+  );
+}
+
+const thrS = StyleSheet.create({
+  card: { borderRadius: 18, borderWidth: 1, marginHorizontal: 12, marginBottom: 12, overflow: 'hidden' },
+  authorRow: { flexDirection: 'row', padding: 14, gap: 10, alignItems: 'flex-start' },
+  threadLine: { position: 'absolute', left: 34, top: 62, width: 2, bottom: 0, borderRadius: 1 },
+  authorInfo: { flex: 1, gap: 8 },
+  authorTop: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
+  authorName: { fontFamily: 'DMSans-Bold', fontSize: 14 },
+  authorHandle: { fontFamily: 'DMSans-Regular', fontSize: 13 },
+  postTime: { fontFamily: 'DMSans-Regular', fontSize: 12 },
+  postText: { fontFamily: 'DMSans-Regular', fontSize: 15, lineHeight: 22 },
+  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  tag: { fontFamily: 'DMSans-Medium', fontSize: 13, color: '#7B2FFF' },
+  actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 18, marginTop: 4, paddingBottom: 2 },
+  actionItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  actionCount: { fontFamily: 'DMSans-Medium', fontSize: 13 },
+  replyRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 14, paddingVertical: 12, alignItems: 'flex-start' },
+  replyContent: { flex: 1, gap: 4 },
+  replyTop: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, alignItems: 'center' },
+  replyName: { fontFamily: 'DMSans-Bold', fontSize: 13 },
+  replyHandle: { fontFamily: 'DMSans-Regular', fontSize: 12 },
+  replyText: { fontFamily: 'DMSans-Regular', fontSize: 13, lineHeight: 19 },
+  replyActions: { flexDirection: 'row', gap: 14, marginTop: 4 },
+  replyActionItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  replyLikeCount: { fontFamily: 'DMSans-Medium', fontSize: 12 },
+  expandBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 1 },
+  expandText: { fontFamily: 'DMSans-Medium', fontSize: 13 },
+});
+
+// ─── Thread reply modal ────────────────────────────────────────────────────────
+
+function ThreadReplyModal({ visible, onClose, post, C, insets }: {
+  visible: boolean; onClose: () => void; post: ThreadPost | null; C: AppColors; insets: { bottom: number };
+}) {
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const handleSend = async () => {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    if (post?.threadId) await dbPostReply(post.threadId, text.trim());
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setText('');
+    setSending(false);
+    onClose();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} activeOpacity={1} onPress={onClose} />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
+        <View style={[thrModalS.sheet, { backgroundColor: C.bgDeep, borderColor: C.border, paddingBottom: insets.bottom + 12 }]}>
+          <View style={[thrModalS.handle, { backgroundColor: C.border }]} />
+          <View style={[thrModalS.header, { borderBottomColor: C.border }]}>
+            <Text style={[thrModalS.title, { color: C.textPrimary }]}>Reply to thread</Text>
+            <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={C.textMuted} /></TouchableOpacity>
+          </View>
+          {post && (
+            <View style={thrModalS.quoteBox}>
+              <View style={thrModalS.quoteLeft}>
+                <ThreadAvatar name={post.user} gradSeed={post.gradSeed} size={32} />
+              </View>
+              <View style={thrModalS.quoteRight}>
+                <Text style={[thrModalS.quoteName, { color: C.textPrimary }]}>{post.user} <Text style={{ color: C.textMuted, fontFamily: 'DMSans-Regular' }}>{post.handle}</Text></Text>
+                <Text style={[thrModalS.quoteText, { color: C.textSecondary }]} numberOfLines={2}>{post.text}</Text>
+              </View>
+            </View>
+          )}
+          <View style={[thrModalS.inputRow, { borderTopColor: C.border }]}>
+            <TextInput
+              style={[thrModalS.input, { backgroundColor: C.bgCard, color: C.textPrimary, borderColor: C.border }]}
+              placeholder="Write your reply…"
+              placeholderTextColor={C.textMuted}
+              value={text}
+              onChangeText={setText}
+              multiline
+              autoFocus={visible}
+            />
+            <TouchableOpacity
+              onPress={handleSend}
+              activeOpacity={0.7}
+              style={[thrModalS.sendBtn, { backgroundColor: text.trim() ? '#FF2D87' : C.bgCard }]}
+            >
+              <Ionicons name="send" size={16} color={text.trim() ? '#FFFFFF' : C.textMuted} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const thrModalS = StyleSheet.create({
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1 },
+  handle: { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 12, borderBottomWidth: 1 },
+  title: { fontFamily: 'Syne-Bold', fontSize: 16 },
+  quoteBox: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingVertical: 14 },
+  quoteLeft: {},
+  quoteRight: { flex: 1, gap: 3 },
+  quoteName: { fontFamily: 'DMSans-Bold', fontSize: 13 },
+  quoteText: { fontFamily: 'DMSans-Regular', fontSize: 13, lineHeight: 18 },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1 },
+  input: { flex: 1, borderRadius: 16, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10, fontFamily: 'DMSans-Regular', fontSize: 14, maxHeight: 120 },
+  sendBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+});
+
+// ─── Threads screen ────────────────────────────────────────────────────────────
+
+function ThreadsScreen({ C, insets }: { C: AppColors; insets: { top: number; bottom: number } }) {
+  const [posts, setPosts] = useState<ThreadPost[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [replyPost, setReplyPost] = useState<ThreadPost | null>(null);
+  const [composeText, setComposeText] = useState('');
+  const [composing, setComposing] = useState(false);
+  const [posting, setPosting] = useState(false);
+
+  useEffect(() => {
+    getThreadFeed(30).then((dbThreads) => {
+      setPosts(dbThreads.map(dbThreadToPost));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const handlePost = async () => {
+    if (!composeText.trim() || posting) return;
+    setPosting(true);
+    const saved = await dbPostThread(composeText.trim());
+    if (saved) {
+      setPosts((prev) => [dbThreadToPost(saved, 0), ...prev]);
+    } else {
+      // optimistic fallback
+      const optimistic: ThreadPost = {
+        id: `local-${Date.now()}`,
+        user: 'You', handle: '@you',
+        text: composeText.trim(),
+        time: 'now', likes: 0, comments: 0, reposts: 0,
+        gradSeed: 2, tags: [], hasReply: false,
+      };
+      setPosts((prev) => [optimistic, ...prev]);
+    }
+    setComposeText('');
+    setComposing(false);
+    setPosting(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  return (
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingTop: 12, paddingBottom: insets.bottom + 90 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Compose bar */}
+        <TouchableOpacity
+          style={[thrFeedS.composeBar, { backgroundColor: C.bgCard, borderColor: C.border }]}
+          activeOpacity={0.85}
+          onPress={() => { setComposing(true); Haptics.selectionAsync(); }}
+        >
+          <LinearGradient colors={['#FF2D87','#7B2FFF']} style={thrFeedS.composeAvatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+            <Text style={thrFeedS.composeAvatarText}>YO</Text>
+          </LinearGradient>
+          <Text style={[thrFeedS.composePlaceholder, { color: C.textMuted }]}>What's on your mind?</Text>
+          <View style={thrFeedS.composeBtn}>
+            <LinearGradient colors={['#FF2D87','#7B2FFF']} style={thrFeedS.composeBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+              <Text style={thrFeedS.composeBtnText}>Post</Text>
+            </LinearGradient>
+          </View>
+        </TouchableOpacity>
+
+        {/* Thread cards */}
+        {loading ? (
+          <ActivityIndicator style={{ marginTop: 48 }} color="#FF2D87" size="large" />
+        ) : posts.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingTop: 64, gap: 10 }}>
+            <Ionicons name="chatbubbles-outline" size={48} color={C.textMuted} />
+            <Text style={{ fontFamily: 'Syne-Bold', fontSize: 17, color: C.textPrimary }}>No threads yet</Text>
+            <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 14, color: C.textMuted, textAlign: 'center', maxWidth: 220, lineHeight: 20 }}>
+              Be the first to post a thread.
+            </Text>
+          </View>
+        ) : posts.map((post) => (
+          <ThreadCard key={post.id} post={post} C={C} onReplyPress={setReplyPost} />
+        ))}
+      </ScrollView>
+
+      {/* Compose modal */}
+      <Modal visible={composing} transparent animationType="slide" onRequestClose={() => setComposing(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} activeOpacity={1} onPress={() => setComposing(false)} />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
+          <View style={[thrModalS.sheet, { backgroundColor: C.bgDeep, borderColor: C.border, paddingBottom: insets.bottom + 12 }]}>
+            <View style={[thrModalS.handle, { backgroundColor: C.border }]} />
+            <View style={[thrModalS.header, { borderBottomColor: C.border }]}>
+              <Text style={[thrModalS.title, { color: C.textPrimary }]}>New Thread</Text>
+              <TouchableOpacity onPress={() => setComposing(false)}><Ionicons name="close" size={22} color={C.textMuted} /></TouchableOpacity>
+            </View>
+            <View style={[thrModalS.inputRow, { borderTopColor: C.border }]}>
+              <TextInput
+                style={[thrModalS.input, { backgroundColor: C.bgCard, color: C.textPrimary, borderColor: C.border }]}
+                placeholder="Start a thread…"
+                placeholderTextColor={C.textMuted}
+                value={composeText}
+                onChangeText={setComposeText}
+                multiline
+                autoFocus
+              />
+              <TouchableOpacity
+                onPress={handlePost}
+                activeOpacity={0.7}
+                style={[thrModalS.sendBtn, { backgroundColor: composeText.trim() ? '#FF2D87' : C.bgCard }]}
+                disabled={posting}
+              >
+                {posting
+                  ? <ActivityIndicator size="small" color="#FFFFFF" />
+                  : <Ionicons name="send" size={16} color={composeText.trim() ? '#FFFFFF' : C.textMuted} />
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Reply modal */}
+      <ThreadReplyModal
+        visible={!!replyPost}
+        onClose={() => setReplyPost(null)}
+        post={replyPost}
+        C={C}
+        insets={insets}
+      />
+    </View>
+  );
+}
+
+const thrFeedS = StyleSheet.create({
+  composeBar: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 12, marginBottom: 14, padding: 12, borderRadius: 16, borderWidth: 1 },
+  composeAvatar: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  composeAvatarText: { fontFamily: 'Syne-Bold', fontSize: 11, color: '#FFFFFF' },
+  composePlaceholder: { flex: 1, fontFamily: 'DMSans-Regular', fontSize: 14 },
+  composeBtn: { borderRadius: 10, overflow: 'hidden' },
+  composeBtnGrad: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10 },
+  composeBtnText: { fontFamily: 'DMSans-Bold', fontSize: 13, color: '#FFFFFF' },
+});
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function HomeScreen() {
@@ -934,98 +1313,50 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const { unreadCount } = useApp();
   const { colors: C } = useTheme();
-  const [creators, setCreators] = useState<Creator[]>([]);
-  const [rankedPosts, setRankedPosts] = useState<VideoItem[]>([]);
-  const [feed, setFeed] = useState<'forYou' | 'friends'>('forYou');
+  const [forYouPosts, setForYouPosts] = useState<VideoItem[]>([]);
+  const [friendsPosts, setFriendsPosts] = useState<VideoItem[]>([]);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [feed, setFeed] = useState<'forYou' | 'friends' | 'threads'>('forYou');
   const [visibleIndex, setVisibleIndex] = useState(0);
   const [commentsItem, setCommentsItem] = useState<VideoItem | null>(null);
   const [shareVisible, setShareVisible] = useState(false);
   const [giftItem, setGiftItem] = useState<VideoItem | null>(null);
 
-  const load = useCallback(async () => {
-    // 1. Try ranked feed from algorithm
-    if (user?.id) {
-      const { getFeed } = await import('@/lib/feed');
-      const ranked = await getFeed(user.id, 0, 20, 'forYou');
-      if (ranked.length) {
-        setRankedPosts(ranked.map((p, i) => ({
-          id: p.id,
-          creator: {
-            id: p.user_id,
-            handle: p.handle,
-            display_name: p.display_name,
-            total_viewers: p.views,
-            platforms: [],
-            is_live: false,
-            last_streamed_at: null,
-            stream_count: 0,
-          },
-          caption: p.caption ?? '',
-          song: POST_SONGS[i % POST_SONGS.length],
-          views: p.views,
-          likes: p.likes,
-          comments: p.comments,
-          imgSeed: p.thumbnail_url ? '' : `ranked-${p.id.slice(0, 8)}`,
-          accentColor: ACCENT_COLORS[i % ACCENT_COLORS.length],
-        })));
-      }
-    }
+  const toVideoItem = useCallback((p: any, i: number): VideoItem => ({
+    id: p.id,
+    creator: {
+      id: p.user_id,
+      handle: p.handle,
+      display_name: p.display_name,
+      total_viewers: p.views ?? 0,
+      platforms: [],
+      is_live: false,
+      last_streamed_at: null,
+      stream_count: 0,
+    },
+    caption: p.caption ?? '',
+    mediaUrl: p.media_url ?? null,
+    views: p.views ?? 0,
+    likes: p.likes ?? 0,
+    comments: p.comments ?? 0,
+    accentColor: ACCENT_COLORS[i % ACCENT_COLORS.length],
+  }), []);
 
-    // 2. Always load creators for the mock fallback feed
-    const { data } = await supabase
-      .from('creator_discover')
-      .select('*')
-      .order('is_live', { ascending: false })
-      .order('total_viewers', { ascending: false })
-      .limit(30);
-    if (data) setCreators(data.filter((c: Creator) => c.id !== user?.id));
-  }, [user?.id]);
+  const load = useCallback(async () => {
+    if (!user?.id) { setFeedLoading(false); return; }
+    const { getFeed } = await import('@/lib/feed');
+    const [forYou, following] = await Promise.all([
+      getFeed(user.id, 0, 20, 'forYou'),
+      getFeed(user.id, 0, 20, 'following'),
+    ]);
+    setForYouPosts(forYou.map(toVideoItem));
+    setFriendsPosts(following.map(toVideoItem));
+    setFeedLoading(false);
+  }, [user?.id, toVideoItem]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const vibaItem: VideoItem = {
-    id: 'viba-featured',
-    creator: { id: 'viba', handle: 'viba', display_name: 'Viba', total_viewers: 0, platforms: ['youtube', 'twitch', 'tiktok', 'instagram'], is_live: false, last_streamed_at: null, stream_count: 0 },
-    caption: '🎬 Stream to TikTok, Instagram, YouTube & Twitch all at once — connect your platforms and go live in one tap.',
-    song: 'original sound - viba',
-    views: 89400, likes: 4200, comments: 312,
-    imgSeed: 'viba-stream-hero',
-    accentColor: '#FF2D87',
-    isViba: true,
-  };
-
-  const mockItems = useMemo<VideoItem[]>(() => {
-    const fromCreators = creators.slice(0, 20).map((c, i) => {
-      const seed = c.id.charCodeAt(0) + c.id.charCodeAt(c.id.length - 1);
-      return {
-        id: `v-${c.id}`,
-        creator: c,
-        caption: POST_CAPTIONS[(i + 1) % POST_CAPTIONS.length],
-        song: POST_SONGS[(seed + i) % POST_SONGS.length],
-        views: 1200 + (seed * 317) % 48000,
-        likes: 140 + (seed * 73) % 9800,
-        comments: 12 + (seed * 29) % 480,
-        imgSeed: `creator-${c.id.slice(0, 8)}-${i}`,
-        accentColor: ACCENT_COLORS[(seed + i) % ACCENT_COLORS.length],
-      };
-    });
-    // Interleave DB creators with demo accounts so the feed is always full
-    const combined: VideoItem[] = [];
-    const maxLen = Math.max(fromCreators.length, DEMO_VIDEOS.length);
-    for (let i = 0; i < maxLen; i++) {
-      if (i < fromCreators.length) combined.push(fromCreators[i]);
-      if (i < DEMO_VIDEOS.length) combined.push(DEMO_VIDEOS[i]);
-    }
-    return [vibaItem, ...combined];
-  }, [creators]);
-
-  // Use ranked feed when available, fall back to mock (always append demo videos for a full TL)
-  const videoItems = rankedPosts.length
-    ? [vibaItem, ...rankedPosts, ...DEMO_VIDEOS]
-    : mockItems;
-
-  const friendsItems = videoItems.slice(0, 8);
-  const items = feed === 'forYou' ? videoItems : friendsItems;
+  const items = feed === 'threads' ? [] : (feed === 'forYou' ? forYouPosts : friendsPosts);
 
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
     if (viewableItems[0]?.index != null) setVisibleIndex(viewableItems[0].index);
@@ -1048,37 +1379,73 @@ export default function HomeScreen() {
   const keyExtractor = useCallback((item: VideoItem) => item.id, []);
   const getItemLayout = useCallback((_: any, index: number) => ({ length: SCREEN_H, offset: SCREEN_H * index, index }), []);
 
+  const isThreads = feed === 'threads';
+
   return (
     <View style={styles.container}>
-      <FlatList
-        data={items}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        pagingEnabled
-        showsVerticalScrollIndicator={false}
-        snapToInterval={SCREEN_H}
-        snapToAlignment="start"
-        decelerationRate="fast"
-        getItemLayout={getItemLayout}
-        onViewableItemsChanged={onViewableItemsChanged.current}
-        viewabilityConfig={viewabilityConfig.current}
-        removeClippedSubviews
-        maxToRenderPerBatch={3}
-        windowSize={5}
-      />
+      {/* Video feed (hidden when threads is active) */}
+      {!isThreads && feedLoading && (
+        <View style={styles.emptyWrap}>
+          <ActivityIndicator color="#FF2D87" size="large" />
+        </View>
+      )}
+      {!isThreads && !feedLoading && items.length === 0 && (
+        <View style={styles.emptyWrap}>
+          <Ionicons name="film-outline" size={52} color="rgba(255,255,255,0.2)" />
+          <Text style={styles.emptyTitle}>Nothing here yet</Text>
+          <Text style={styles.emptySub}>
+            {feed === 'friends' ? 'Follow creators to see their posts here.' : 'Be the first to post something.'}
+          </Text>
+        </View>
+      )}
+      {!isThreads && !feedLoading && items.length > 0 && (
+        <FlatList
+          data={items}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          pagingEnabled
+          showsVerticalScrollIndicator={false}
+          snapToInterval={SCREEN_H}
+          snapToAlignment="start"
+          decelerationRate="fast"
+          getItemLayout={getItemLayout}
+          onViewableItemsChanged={onViewableItemsChanged.current}
+          viewabilityConfig={viewabilityConfig.current}
+          removeClippedSubviews
+          maxToRenderPerBatch={3}
+          windowSize={5}
+        />
+      )}
+
+      {/* Threads feed */}
+      {isThreads && (
+        <View style={[StyleSheet.absoluteFill, { paddingTop: insets.top + 56, backgroundColor: C.bgDeep }]}>
+          <ThreadsScreen C={C} insets={insets} />
+        </View>
+      )}
 
       {/* Floating header */}
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
+      <View
+        style={[
+          styles.header,
+          { paddingTop: insets.top + 8, backgroundColor: isThreads ? C.bgDeep : 'transparent' },
+        ]}
+        pointerEvents="box-none"
+      >
         <TouchableOpacity style={styles.headerIconBtn} activeOpacity={0.7} onPress={() => router.push('/search')}>
-          <Ionicons name="search-outline" size={22} color="#FFFFFF" />
+          <Ionicons name="search-outline" size={22} color={isThreads ? C.textPrimary : '#FFFFFF'} />
         </TouchableOpacity>
         <View style={styles.filterTabs} pointerEvents="box-none">
-          {(['friends', 'forYou'] as const).map((f) => {
+          {(['friends', 'forYou', 'threads'] as const).map((f) => {
             const active = feed === f;
+            const label = f === 'friends' ? 'Friends' : f === 'forYou' ? 'For You' : 'Threads';
+            const textColor = isThreads
+              ? (active ? C.textPrimary : C.textMuted)
+              : (active ? '#FFFFFF' : 'rgba(255,255,255,0.55)');
             return (
               <TouchableOpacity key={f} style={styles.filterTab} activeOpacity={0.75} onPress={() => { Haptics.selectionAsync(); setFeed(f); }}>
-                <Text style={[styles.filterLabel, active && styles.filterLabelActive]}>
-                  {f === 'friends' ? 'Friends' : 'For You'}
+                <Text style={[styles.filterLabel, active && styles.filterLabelActive, { color: textColor }]}>
+                  {label}
                 </Text>
                 {active && (
                   <LinearGradient colors={['#FF2D87', '#7B2FFF']} style={styles.filterUnderline} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} />
@@ -1088,7 +1455,7 @@ export default function HomeScreen() {
           })}
         </View>
         <TouchableOpacity style={styles.headerIconBtn} activeOpacity={0.7} onPress={() => router.push('/notifications')}>
-          <Ionicons name="notifications-outline" size={22} color="#FFFFFF" />
+          <Ionicons name="notifications-outline" size={22} color={isThreads ? C.textPrimary : '#FFFFFF'} />
           {unreadCount > 0 && (
             <View style={styles.badge}><Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text></View>
           )}
@@ -1127,6 +1494,9 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  emptyTitle: { fontFamily: 'Syne-Bold', fontSize: 18, color: 'rgba(255,255,255,0.5)' },
+  emptySub: { fontFamily: 'DMSans-Regular', fontSize: 14, color: 'rgba(255,255,255,0.3)', textAlign: 'center', maxWidth: 240, lineHeight: 20 },
   header: {
     position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
     flexDirection: 'row', alignItems: 'center',

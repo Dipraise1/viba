@@ -304,6 +304,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.textMuted,
   },
+  
   input: {
     fontFamily: 'DMSans-Regular',
     fontSize: 16,

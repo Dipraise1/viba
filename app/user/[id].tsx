@@ -9,11 +9,18 @@ import {
   Image,
   Dimensions,
   Linking,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
+import Animated, {
+  FadeInDown, FadeIn,
+  useSharedValue, useAnimatedStyle, withSpring,
+} from 'react-native-reanimated';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/context/ThemeContext';
@@ -22,6 +29,14 @@ import { supabase } from '@/lib/supabase';
 import { getPlatform } from '@/constants/platforms';
 import { useAuth } from '@/context/AuthContext';
 import { followCreator, unfollowCreator, checkIsFollowing, getFollowerCount } from '@/lib/feed';
+import {
+  getUserThreads,
+  postThreadReply as dbPostReply,
+  toggleThreadLike,
+  toggleThreadRepost,
+  toggleThreadBookmark,
+  type Thread as DbThread,
+} from '@/lib/threads';
 
 const { width: W } = Dimensions.get('window');
 const POST_GAP = 2;
@@ -66,30 +81,6 @@ function initials(name: string) {
   return name.split(' ').map((w) => w[0] ?? '').join('').toUpperCase().slice(0, 2) || '??';
 }
 
-const BIOS = [
-  'Content creator · Streaming daily 🎙️',
-  'Gamer · Streamer · Vibe curator 🎮',
-  'Music producer & live performer 🎵',
-  'Beauty creator | Tutorials every week ✨',
-  'Fitness coach · Going live Mon–Fri 💪',
-  'Artist · Painting live for you 🎨',
-  'Talk show host · Real conversations 🎤',
-  'Dance content · New videos daily 💃',
-];
-
-function getBio(id: string) {
-  return BIOS[id.charCodeAt(0) % BIOS.length];
-}
-
-const ALL_PLATFORM_IDS = ['tiktok', 'instagram', 'youtube', 'twitch', 'facebook'];
-
-function mockPlatformsForId(creatorId: string): string[] {
-  if (!creatorId) return ['tiktok', 'instagram'];
-  const seed = creatorId.charCodeAt(0) + (creatorId.charCodeAt(creatorId.length - 1) || 0);
-  const count = 2 + (seed % 2);
-  const start = seed % ALL_PLATFORM_IDS.length;
-  return Array.from({ length: count }, (_, i) => ALL_PLATFORM_IDS[(start + i) % ALL_PLATFORM_IDS.length]);
-}
 
 const PLATFORM_URL_TEMPLATES: Record<string, (handle: string) => string> = {
   tiktok: (h) => `https://tiktok.com/@${h}`,
@@ -104,15 +95,258 @@ function openPlatform(platformId: string, handle: string) {
   if (builder) Linking.openURL(builder(handle));
 }
 
-// Deterministic mock stats seeded from creator id
-function getStats(id: string) {
-  const seed = id.charCodeAt(0) + (id.charCodeAt(id.length - 1) || 0);
+// ─── Thread data ──────────────────────────────────────────────────────────────
+
+interface ProfileThread {
+  id: string;
+  threadId?: string; // real DB id for interactions
+  text: string;
+  time: string;
+  likes: number;
+  replies: number;
+  reposts: number;
+  tags: string[];
+  pinned?: boolean;
+  liked?: boolean;
+  reposted?: boolean;
+  bookmarked?: boolean;
+}
+
+function relativeTime(iso: string): string {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60)    return `${Math.floor(diff)}s`;
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  return `${Math.floor(diff / 86400)}d`;
+}
+
+function dbToProfileThread(t: DbThread, idx: number): ProfileThread {
   return {
-    followers: 1200 + (seed * 317) % 98000,
-    following: 80 + (seed * 53) % 900,
-    posts: 8 + (seed * 7) % 120,
+    id:        t.id,
+    threadId:  t.id,
+    text:      t.body,
+    time:      relativeTime(t.created_at),
+    likes:     t.likes,
+    replies:   t.replies,
+    reposts:   t.reposts,
+    tags:      t.tags ?? [],
+    pinned:    idx === 0,
+    liked:     t.liked ?? false,
+    reposted:  t.reposted ?? false,
+    bookmarked: t.bookmarked ?? false,
   };
 }
+
+// ─── Profile thread card ───────────────────────────────────────────────────────
+
+function ProfileThreadCard({
+  thread, grad, name, C,
+  onReplyPress,
+}: {
+  thread: ProfileThread;
+  grad: [string, string, string];
+  name: string;
+  C: AppColors;
+  onReplyPress: (t: ProfileThread) => void;
+}) {
+  const [liked, setLiked] = useState(!!thread.liked);
+  const [likeCount, setLikeCount] = useState(thread.likes);
+  const [reposted, setReposted] = useState(!!thread.reposted);
+  const [repostCount, setRepostCount] = useState(thread.reposts);
+  const [bookmarked, setBookmarked] = useState(!!thread.bookmarked);
+  const heartScale = useSharedValue(1);
+  const repostScale = useSharedValue(1);
+  const heartStyle = useAnimatedStyle(() => ({ transform: [{ scale: heartScale.value }] }));
+  const repostStyle = useAnimatedStyle(() => ({ transform: [{ scale: repostScale.value }] }));
+
+  const fmtN = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(0)}K` : String(n);
+
+  const handleLike = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const next = !liked;
+    setLiked(next);
+    setLikeCount((c) => c + (next ? 1 : -1));
+    heartScale.value = withSpring(1.4, { damping: 5 }, () => { heartScale.value = withSpring(1); });
+    if (thread.threadId) toggleThreadLike(thread.threadId, !next);
+  };
+
+  const handleRepost = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const next = !reposted;
+    setReposted(next);
+    setRepostCount((c) => c + (next ? 1 : -1));
+    repostScale.value = withSpring(1.35, { damping: 5 }, () => { repostScale.value = withSpring(1); });
+    if (thread.threadId) toggleThreadRepost(thread.threadId, !next);
+  };
+
+  const handleBookmark = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const next = !bookmarked;
+    setBookmarked(next);
+    if (thread.threadId) toggleThreadBookmark(thread.threadId, !next);
+  };
+
+  return (
+    <View style={[ptS.card, { backgroundColor: C.bgCard, borderColor: C.border }]}>
+      {thread.pinned && (
+        <View style={[ptS.pinnedBar, { borderBottomColor: C.border }]}>
+          <Ionicons name="pin" size={12} color={C.textMuted} />
+          <Text style={[ptS.pinnedText, { color: C.textMuted }]}>Pinned thread</Text>
+        </View>
+      )}
+      <View style={ptS.row}>
+        {/* Avatar */}
+        <LinearGradient
+          colors={[grad[0], grad[1]]}
+          style={ptS.avatar}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        >
+          <Text style={ptS.avatarText}>{initials(name)}</Text>
+        </LinearGradient>
+
+        <View style={ptS.content}>
+          <View style={ptS.topRow}>
+            <Text style={[ptS.nameText, { color: C.textPrimary }]}>{name}</Text>
+            <Text style={[ptS.timeText, { color: C.textMuted }]}>· {thread.time}</Text>
+          </View>
+          <Text style={[ptS.bodyText, { color: C.textPrimary }]}>{thread.text}</Text>
+
+          {thread.tags.length > 0 && (
+            <View style={ptS.tagsRow}>
+              {thread.tags.map((tag) => (
+                <Text key={tag} style={[ptS.tag, { color: grad[0] }]}>{tag}</Text>
+              ))}
+            </View>
+          )}
+
+          <View style={ptS.actions}>
+            <TouchableOpacity style={ptS.actionItem} activeOpacity={0.7} onPress={handleLike}>
+              <Animated.View style={heartStyle}>
+                <Ionicons name={liked ? 'heart' : 'heart-outline'} size={18} color={liked ? '#FF2D87' : C.textMuted} />
+              </Animated.View>
+              <Text style={[ptS.actionCount, { color: liked ? '#FF2D87' : C.textMuted }]}>
+                {fmtN(likeCount)}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={ptS.actionItem} activeOpacity={0.7} onPress={() => onReplyPress(thread)}>
+              <Ionicons name="chatbubble-outline" size={17} color={C.textMuted} />
+              <Text style={[ptS.actionCount, { color: C.textMuted }]}>{fmtN(thread.replies)}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={ptS.actionItem} activeOpacity={0.7} onPress={handleRepost}>
+              <Animated.View style={repostStyle}>
+                <Ionicons name="repeat-outline" size={20} color={reposted ? '#00D4AA' : C.textMuted} />
+              </Animated.View>
+              <Text style={[ptS.actionCount, { color: reposted ? '#00D4AA' : C.textMuted }]}>
+                {fmtN(repostCount)}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={ptS.actionItem} activeOpacity={0.7} onPress={handleBookmark}>
+              <Ionicons name={bookmarked ? 'bookmark' : 'bookmark-outline'} size={17} color={bookmarked ? '#7B2FFF' : C.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={ptS.actionItem} activeOpacity={0.7} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
+              <Ionicons name="paper-plane-outline" size={17} color={C.textMuted} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const ptS = StyleSheet.create({
+  card: { borderRadius: 16, borderWidth: 1, marginHorizontal: 12, marginBottom: 10, overflow: 'hidden' },
+  pinnedBar: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 7, borderBottomWidth: 1 },
+  pinnedText: { fontFamily: 'DMSans-Medium', fontSize: 11 },
+  row: { flexDirection: 'row', gap: 10, padding: 14, alignItems: 'flex-start' },
+  avatar: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  avatarText: { fontFamily: 'Syne-Bold', fontSize: 11, color: '#FFFFFF' },
+  content: { flex: 1, gap: 7 },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  nameText: { fontFamily: 'DMSans-Bold', fontSize: 13 },
+  timeText: { fontFamily: 'DMSans-Regular', fontSize: 12 },
+  bodyText: { fontFamily: 'DMSans-Regular', fontSize: 14, lineHeight: 21 },
+  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  tag: { fontFamily: 'DMSans-Medium', fontSize: 12 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 2 },
+  actionItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  actionCount: { fontFamily: 'DMSans-Medium', fontSize: 12 },
+});
+
+// ─── Thread reply modal ────────────────────────────────────────────────────────
+
+function ProfileThreadReplyModal({ visible, onClose, thread, name, C, insets }: {
+  visible: boolean; onClose: () => void; thread: ProfileThread | null;
+  name: string; C: AppColors; insets: { bottom: number };
+}) {
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const handleSend = async () => {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    if (thread?.threadId) await dbPostReply(thread.threadId, text.trim());
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setText('');
+    setSending(false);
+    onClose();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} activeOpacity={1} onPress={onClose} />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
+        <View style={[ptrS.sheet, { backgroundColor: C.bgDeep, borderColor: C.border, paddingBottom: insets.bottom + 12 }]}>
+          <View style={[ptrS.handle, { backgroundColor: C.border }]} />
+          <View style={[ptrS.header, { borderBottomColor: C.border }]}>
+            <Text style={[ptrS.title, { color: C.textPrimary }]}>Reply to {name}</Text>
+            <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={C.textMuted} /></TouchableOpacity>
+          </View>
+          {thread && (
+            <View style={[ptrS.quote, { borderBottomColor: C.border }]}>
+              <Text style={[ptrS.quoteName, { color: C.textPrimary }]}>{name}</Text>
+              <Text style={[ptrS.quoteText, { color: C.textMuted }]} numberOfLines={2}>{thread.text}</Text>
+            </View>
+          )}
+          <View style={[ptrS.inputRow, { borderTopColor: C.border }]}>
+            <TextInput
+              style={[ptrS.input, { backgroundColor: C.bgCard, color: C.textPrimary, borderColor: C.border }]}
+              placeholder="Write a reply…"
+              placeholderTextColor={C.textMuted}
+              value={text}
+              onChangeText={setText}
+              multiline
+              autoFocus={visible}
+            />
+            <TouchableOpacity
+              onPress={handleSend}
+              activeOpacity={0.7}
+              style={[ptrS.sendBtn, { backgroundColor: text.trim() ? '#FF2D87' : C.bgCard }]}
+            >
+              <Ionicons name="send" size={16} color={text.trim() ? '#FFFFFF' : C.textMuted} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const ptrS = StyleSheet.create({
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1 },
+  handle: { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 12, borderBottomWidth: 1 },
+  title: { fontFamily: 'Syne-Bold', fontSize: 16 },
+  quote: { paddingHorizontal: 18, paddingVertical: 12, gap: 3, borderBottomWidth: 1 },
+  quoteName: { fontFamily: 'DMSans-Bold', fontSize: 13 },
+  quoteText: { fontFamily: 'DMSans-Regular', fontSize: 13, lineHeight: 18 },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1 },
+  input: { flex: 1, borderRadius: 16, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10, fontFamily: 'DMSans-Regular', fontSize: 14, maxHeight: 120 },
+  sendBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+});
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
@@ -131,7 +365,9 @@ export default function UserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [following, setFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
-  const [contentTab, setContentTab] = useState<'posts' | 'streams'>('posts');
+  const [contentTab, setContentTab] = useState<'posts' | 'streams' | 'threads'>('posts');
+  const [replyThread, setReplyThread] = useState<ProfileThread | null>(null);
+  const [dbThreads, setDbThreads] = useState<ProfileThread[] | null>(null); // null = not yet loaded
 
   useEffect(() => {
     async function init() {
@@ -171,7 +407,7 @@ export default function UserProfileScreen() {
           handle,
           display_name: paramName,
           total_viewers: 0,
-          platforms: mockPlatformsForId(id),
+          platforms: [],
           is_live: false,
           stream_count: 0,
           last_streamed_at: null,
@@ -182,12 +418,13 @@ export default function UserProfileScreen() {
       }
       setCreator(resolved);
 
-      // Fetch stats, platforms, follow state, and posts in parallel
-      const [platResult, followResult, statsResult, postsResult] = await Promise.all([
+      // Fetch stats, platforms, follow state, posts, and threads in parallel
+      const [platResult, followResult, statsResult, postsResult, threadsResult] = await Promise.all([
         supabase.from('platform_connections').select('platform, username').eq('user_id', resolved.id).eq('status', 'active'),
         me ? checkIsFollowing(me.id, resolved.id) : Promise.resolve(false),
         supabase.from('user_stats').select('*').eq('user_id', resolved.id).maybeSingle(),
         supabase.from('posts').select('id, thumbnail_url').eq('user_id', resolved.id).eq('status', 'published').order('created_at', { ascending: false }).limit(12),
+        getUserThreads(resolved.id, me?.id),
       ]);
 
       const names: Record<string, string> = {};
@@ -209,6 +446,9 @@ export default function UserProfileScreen() {
         views: 0,
       })));
 
+      // Real threads (may be empty for demo users — fallback handled in render)
+      setDbThreads(threadsResult.map((t, i) => dbToProfileThread(t, i)));
+
       setLoading(false);
     }
 
@@ -216,12 +456,12 @@ export default function UserProfileScreen() {
   }, [id, me?.id]);
 
   const grad = creator ? creatorGrad(creator.id) : (['#FF2D87', '#C020E0', '#7B2FFF'] as [string, string, string]);
-  const mockStats = creator ? getStats(creator.id) : { followers: 0, following: 0, posts: 0 };
-  const bio = creator?.bio || (creator ? getBio(creator.id) : '');
-  const platforms = (creator?.platforms?.length ? creator.platforms : mockPlatformsForId(creator?.id ?? '')).slice(0, 5);
-  const displayFollowers = followerCount || realStats?.follower_count || mockStats.followers;
-  const displayFollowing = realStats?.following_count ?? mockStats.following;
+  const bio = creator?.bio ?? '';
+  const platforms = (creator?.platforms ?? []).slice(0, 5);
+  const displayFollowers = followerCount || realStats?.follower_count || 0;
+  const displayFollowing = realStats?.following_count ?? 0;
   const displayPosts     = realStats?.post_count ?? userPosts.length;
+  const profileThreads = useMemo(() => dbThreads ?? [], [dbThreads]);
 
   const handleFollow = async () => {
     if (!me || followLoading) return;
@@ -395,22 +635,26 @@ export default function UserProfileScreen() {
 
         {/* ── Content tabs ── */}
         <Animated.View entering={FadeInDown.delay(220).duration(350)} style={[styles.tabRow, { borderColor: C.border }]}>
-          {(['posts', 'streams'] as const).map((t) => {
-            const active = contentTab === t;
+          {([
+            { key: 'posts',   icon: 'grid',  label: 'Posts' },
+            { key: 'threads', icon: 'chatbubbles', label: 'Threads' },
+            { key: 'streams', icon: 'radio',  label: 'Streams' },
+          ] as const).map(({ key, icon, label }) => {
+            const active = contentTab === key;
             return (
               <TouchableOpacity
-                key={t}
+                key={key}
                 style={styles.tabBtn}
                 activeOpacity={0.75}
-                onPress={() => { Haptics.selectionAsync(); setContentTab(t); }}
+                onPress={() => { Haptics.selectionAsync(); setContentTab(key); }}
               >
                 <Ionicons
-                  name={t === 'posts' ? (active ? 'grid' : 'grid-outline') : (active ? 'radio' : 'radio-outline')}
-                  size={18}
+                  name={active ? icon : `${icon}-outline` as any}
+                  size={17}
                   color={active ? C.textPrimary : C.textMuted}
                 />
                 <Text style={[styles.tabLabel, { color: active ? C.textPrimary : C.textMuted }]}>
-                  {t === 'posts' ? 'Posts' : 'Streams'}
+                  {label}
                 </Text>
                 {active && (
                   <LinearGradient
@@ -425,7 +669,7 @@ export default function UserProfileScreen() {
         </Animated.View>
 
         {/* ── Posts grid ── */}
-        {contentTab === 'posts' ? (
+        {contentTab === 'posts' && (
           <Animated.View entering={FadeInDown.delay(260).duration(350)} style={styles.grid}>
             {userPosts.length > 0 ? userPosts.map((p) => (
               <TouchableOpacity key={p.id} activeOpacity={0.88}
@@ -450,7 +694,34 @@ export default function UserProfileScreen() {
               </View>
             )}
           </Animated.View>
-        ) : (
+        )}
+
+        {/* ── Threads list ── */}
+        {contentTab === 'threads' && (
+          <Animated.View entering={FadeInDown.delay(260).duration(350)} style={{ paddingTop: 12 }}>
+            {profileThreads.length > 0 ? profileThreads.map((thread) => (
+              <ProfileThreadCard
+                key={thread.id}
+                thread={thread}
+                grad={grad}
+                name={creator.display_name || creator.handle}
+                C={C}
+                onReplyPress={setReplyThread}
+              />
+            )) : (
+              <View style={[styles.emptyStreams, { borderColor: C.border }]}>
+                <Ionicons name="chatbubbles-outline" size={36} color={C.textMuted} />
+                <Text style={[styles.emptyTitle, { color: C.textPrimary }]}>No threads yet</Text>
+                <Text style={[styles.emptySub, { color: C.textMuted }]}>
+                  {creator.display_name || creator.handle} hasn't posted any threads.
+                </Text>
+              </View>
+            )}
+          </Animated.View>
+        )}
+
+        {/* ── Streams ── */}
+        {contentTab === 'streams' && (
           <View style={[styles.emptyStreams, { borderColor: C.border }]}>
             <Ionicons name="radio-outline" size={36} color={C.textMuted} />
             <Text style={[styles.emptyTitle, { color: C.textPrimary }]}>No streams yet</Text>
@@ -471,6 +742,16 @@ export default function UserProfileScreen() {
           <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
         </View>
       </TouchableOpacity>
+
+      {/* Thread reply modal */}
+      <ProfileThreadReplyModal
+        visible={!!replyThread}
+        onClose={() => setReplyThread(null)}
+        thread={replyThread}
+        name={creator.display_name || creator.handle}
+        C={C}
+        insets={insets}
+      />
     </View>
   );
 }
